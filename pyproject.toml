@@ -1,0 +1,27 @@
+[tool.uv]
+package = false
+[project]
+name = "rhytm-service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "victorchiaka", email = "chiakavictor205@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "alembic>=1.19.2",
+    "fastapi[standard]",
+    "passlib[bcrypt]>=1.7.4",
+    "psycopg2-binary",
+    "redis",
+    "sqlalchemy>=2.0.52",
+]
+
+[project.scripts]
+rhytm-service = "rhytm_service:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
