@@ -1,0 +1,44 @@
+[
+  {
+    "full_name": "Chinedu Okafor",
+    "email": "chinedu@mail.com",
+    "password": "password123",
+    "plan": "basic"
+  },
+  {
+    "full_name": "Adebayo Ogunleye",
+    "email": "adebayo@mail.com",
+    "password": "password123",
+    "plan": "pro"
+  },
+  {
+    "full_name": "Ngozi Eze",
+    "email": "ngozi@mail.com",
+    "password": "password123",
+    "plan": "pro"
+  },
+  {
+    "full_name": "Femi Adeleke",
+    "email": "femi@mail.com",
+    "password": "password123",
+    "plan": "pro"
+  },
+  {
+    "full_name": "Tunde Bakare",
+    "email": "tunde@mail.com",
+    "password": "password123",
+    "plan": "basic"
+  },
+  {
+    "full_name": "Olamide Ayodeji",
+    "email": "olamide@mail.com",
+    "password": "password123",
+    "plan": "pro"
+  },
+  {
+    "full_name": "Emeka Nwosu",
+    "email": "emeka@mail.com",
+    "password": "password123",
+    "plan": "basic"
+  }
+]

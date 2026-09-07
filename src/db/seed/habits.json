@@ -1,0 +1,100 @@
+[
+  {
+    "user_email": "chinedu@mail.com",
+    "routine_name": "Morning Routine",
+    "name": "Drink Water",
+    "reminder_time": "07:00",
+    "days_of_week": [0, 1, 2, 3, 4, 5, 6]
+  },
+  {
+    "user_email": "chinedu@mail.com",
+    "routine_name": "Morning Routine",
+    "name": "Stretch",
+    "reminder_time": "07:30",
+    "days_of_week": [0, 1, 2, 3, 4, 5, 6]
+  },
+  {
+    "user_email": "chinedu@mail.com",
+    "routine_name": "Evening Routine",
+    "name": "Read 10 pages",
+    "reminder_time": "21:00",
+    "days_of_week": [1, 2, 3, 4, 5]
+  },
+  {
+    "user_email": "chinedu@mail.com",
+    "routine_name": "Evening Routine",
+    "name": "Journal",
+    "reminder_time": "21:30",
+    "days_of_week": [0, 1, 2, 3, 4, 5, 6]
+  },
+  {
+    "user_email": "adebayo@mail.com",
+    "routine_name": "Workout Routine",
+    "name": "Pushups",
+    "reminder_time": "18:00",
+    "days_of_week": [1, 3, 5]
+  },
+  {
+    "user_email": "adebayo@mail.com",
+    "routine_name": "Workout Routine",
+    "name": "Pullups",
+    "reminder_time": "18:15",
+    "days_of_week": [1, 3, 5]
+  },
+  {
+    "user_email": "adebayo@mail.com",
+    "routine_name": "Workout Routine",
+    "name": "Plank",
+    "reminder_time": "18:30",
+    "days_of_week": [1, 3, 5]
+  },
+  {
+    "user_email": "ngozi@mail.com",
+    "routine_name": "Deep Work Routine",
+    "name": "Check Emails",
+    "reminder_time": "09:00",
+    "days_of_week": [1, 2, 3, 4, 5]
+  },
+  {
+    "user_email": "ngozi@mail.com",
+    "routine_name": "Deep Work Routine",
+    "name": "Code Review",
+    "reminder_time": "10:00",
+    "days_of_week": [1, 2, 3, 4, 5]
+  },
+  {
+    "user_email": "femi@mail.com",
+    "routine_name": "Study Routine",
+    "name": "Read textbook",
+    "reminder_time": "15:00",
+    "days_of_week": [1, 2, 3, 4, 5]
+  },
+  {
+    "user_email": "femi@mail.com",
+    "routine_name": "Study Routine",
+    "name": "Do flashcards",
+    "reminder_time": "15:30",
+    "days_of_week": [1, 2, 3, 4, 5]
+  },
+  {
+    "user_email": "tunde@mail.com",
+    "routine_name": "Weekend Routine",
+    "name": "Clean house",
+    "reminder_time": "09:00",
+    "days_of_week": [0, 6]
+  },
+  {
+    "user_email": "tunde@mail.com",
+    "routine_name": "Weekend Routine",
+    "name": "Meal prep",
+    "reminder_time": "11:00",
+    "days_of_week": [0]
+  },
+  {
+    "user_email": "emeka@mail.com",
+    "routine_name": "Morning Run Routine",
+    "name": "5k Run",
+    "reminder_time": "06:00",
+    "days_of_week": [1, 3, 5, 6]
+  }
+]
