@@ -1,8 +1,6 @@
 import asyncio
 import os
-import sys
 from logging.config import fileConfig
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import pool

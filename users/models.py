@@ -15,6 +15,8 @@ class User(Base):
     email = Column(Text, nullable=False, unique=True)
     password = Column(Text, nullable=False)
     plan = Column(Text, nullable=False, default="basic")
+    revenuecat_id = Column(Text, unique=True, nullable=True)
+    plan_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
