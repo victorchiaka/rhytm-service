@@ -1,24 +1,32 @@
 import json
+from pathlib import Path
 
 import aiofiles
+import bcrypt
 from alembic import command, config
-from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from db.database import Base, get_db
 from habits.models import Habit
 from routines.models import Routine
 from users.models import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from .database import Base, get_db
+
+SEED_DIR = Path(__file__).parent / "seed"
+
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
 
 """
 This module is responsible for running database migrations and seeding the database with initial data.
 """
 
 
-async def seed_users(db: AsyncSession, file_path: str):
+async def seed_users(db: AsyncSession, file_path: Path):
     print(f"Seeding Users from {file_path}...")
     async with aiofiles.open(file_path, "r") as file:
         content = await file.read()
@@ -28,7 +36,7 @@ async def seed_users(db: AsyncSession, file_path: str):
         result = await db.execute(select(User).where(User.email == data["email"]))
         existing = result.scalar_one_or_none()
         if existing is None:
-            hashed_password = pwd_context.hash(data["password"])
+            hashed_password = hash_password(data["password"])
             new_user = User(
                 full_name=data["full_name"],
                 email=data["email"],
@@ -39,7 +47,7 @@ async def seed_users(db: AsyncSession, file_path: str):
     await db.commit()
 
 
-async def seed_routines(db: AsyncSession, file_path: str):
+async def seed_routines(db: AsyncSession, file_path: Path):
     print(f"Seeding Routines from {file_path}...")
     async with aiofiles.open(file_path, "r") as file:
         content = await file.read()
@@ -72,7 +80,7 @@ async def seed_routines(db: AsyncSession, file_path: str):
     await db.commit()
 
 
-async def seed_habits(db: AsyncSession, file_path: str):
+async def seed_habits(db: AsyncSession, file_path: Path):
     print(f"Seeding Habits from {file_path}...")
     async with aiofiles.open(file_path, "r") as file:
         content = await file.read()
@@ -126,9 +134,9 @@ async def run_seed_functions():
         await conn.run_sync(Base.metadata.create_all)
 
     async for db in get_db():
-        await seed_users(db, "src/db/seed/users.json")
-        await seed_routines(db, "src/db/seed/routines.json")
-        await seed_habits(db, "src/db/seed/habits.json")
+        await seed_users(db, SEED_DIR / "users.json")
+        await seed_routines(db, SEED_DIR / "routines.json")
+        await seed_habits(db, SEED_DIR / "habits.json")
         break
 
 
