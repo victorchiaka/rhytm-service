@@ -1,19 +1,15 @@
 import asyncio
 import os
-import sys
 from logging.config import fileConfig
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio.engine import async_engine_from_config
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from db.database import Base
 from habits.models import Habit
 from routines.models import Routine
-from users.models import User
+from users.models import Session, User
 
 load_dotenv()
 

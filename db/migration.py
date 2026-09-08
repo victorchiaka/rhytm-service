@@ -6,10 +6,11 @@ from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from db.database import Base, get_db
 from habits.models import Habit
 from routines.models import Routine
 from users.models import User
+
+from .database import Base, get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -126,9 +127,9 @@ async def run_seed_functions():
         await conn.run_sync(Base.metadata.create_all)
 
     async for db in get_db():
-        await seed_users(db, "src/db/seed/users.json")
-        await seed_routines(db, "src/db/seed/routines.json")
-        await seed_habits(db, "src/db/seed/habits.json")
+        await seed_users(db, "db/seed/users.json")
+        await seed_routines(db, "db/seed/routines.json")
+        await seed_habits(db, "db/seed/habits.json")
         break
 
 
