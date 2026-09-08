@@ -1,4 +1,3 @@
-# type: ignore
 import os
 
 from dotenv import load_dotenv
@@ -12,7 +11,6 @@ redis_client = Redis.from_url(REDIS_URL)
 
 
 async def get_rdb() -> Redis:
-    try:
-        yield redis_client
-    finally:
-        await redis_client.close()
+    return redis_client
+
+

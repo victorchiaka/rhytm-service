@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio.engine import async_engine_from_config
 from db.database import Base
 from habits.models import Habit
 from routines.models import Routine
-from users.models import User
+from users.models import Session, User
 
 load_dotenv()
 

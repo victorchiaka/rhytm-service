@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -25,9 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# TODO: Include your routers here once you create them
-# from src.users.router import router as users_router
-# app.include_router(users_router, prefix="/users", tags=["Users"])
+from users.route import auth_router, users_router
+from fastapi import APIRouter
+
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(users_router)
+
+app.include_router(api_router)
 
 
 @app.get("/health")
