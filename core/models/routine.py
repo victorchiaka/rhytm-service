@@ -23,7 +23,14 @@ class Routine(Base):
     )
     name = Column(Text, nullable=False)
     time_of_day = Column(Text, nullable=False)
-    period_of_day = Column(Enum(PeriodOfDay, native_enum=False), nullable=True)
+    period_of_day = Column(
+        Enum(
+            PeriodOfDay,
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
+    )
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

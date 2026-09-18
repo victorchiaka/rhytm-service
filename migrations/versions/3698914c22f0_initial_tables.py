@@ -1,8 +1,8 @@
-"""create initial tables
+"""initial tables
 
-Revision ID: 35b01cb3bef2
+Revision ID: 3698914c22f0
 Revises: 
-Create Date: 2026-09-07 20:15:34.976190
+Create Date: 2026-09-18 13:03:27.128686
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '35b01cb3bef2'
+revision: str = '3698914c22f0'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,20 +27,35 @@ def upgrade() -> None:
     sa.Column('email', sa.Text(), nullable=False),
     sa.Column('password', sa.Text(), nullable=False),
     sa.Column('plan', sa.Text(), nullable=False),
+    sa.Column('revenuecat_id', sa.Text(), nullable=True),
+    sa.Column('plan_expires_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    sa.UniqueConstraint('email'),
+    sa.UniqueConstraint('revenuecat_id')
     )
     op.create_table('routines',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('name', sa.Text(), nullable=False),
     sa.Column('time_of_day', sa.Text(), nullable=False),
+    sa.Column('period_of_day', sa.Enum('Morning', 'Afternoon', 'Evening', name='periodofday', native_enum=False), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('sessions',
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('user_id', sa.UUID(), nullable=False),
+    sa.Column('refresh_token_hash', sa.Text(), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_sessions_refresh_token_hash'), 'sessions', ['refresh_token_hash'], unique=True)
+    op.create_index(op.f('ix_sessions_user_id'), 'sessions', ['user_id'], unique=False)
     op.create_table('habits',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -72,6 +87,9 @@ def downgrade() -> None:
     op.drop_table('activity_log')
     op.drop_index('idx_habits_routine', table_name='habits')
     op.drop_table('habits')
+    op.drop_index(op.f('ix_sessions_user_id'), table_name='sessions')
+    op.drop_index(op.f('ix_sessions_refresh_token_hash'), table_name='sessions')
+    op.drop_table('sessions')
     op.drop_table('routines')
     op.drop_table('users')
     # ### end Alembic commands ###

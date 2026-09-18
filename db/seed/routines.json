@@ -3,42 +3,42 @@
     "user_email": "chinedu@mail.com",
     "name": "Morning Routine",
     "time_of_day": "06:00",
-    "period_of_day": "MORNING"
+    "period_of_day": "Morning"
   },
   {
     "user_email": "chinedu@mail.com",
     "name": "Evening Routine",
     "time_of_day": "20:00",
-    "period_of_day": "EVENING"
+    "period_of_day": "Evening"
   },
   {
     "user_email": "adebayo@mail.com",
     "name": "Workout Routine",
     "time_of_day": "17:30",
-    "period_of_day": "EVENING"
+    "period_of_day": "Evening"
   },
   {
     "user_email": "ngozi@mail.com",
     "name": "Deep Work Routine",
     "time_of_day": "08:30",
-    "period_of_day": "MORNING"
+    "period_of_day": "Morning"
   },
   {
     "user_email": "femi@mail.com",
     "name": "Study Routine",
     "time_of_day": "14:00",
-    "period_of_day": "AFTERNOON"
+    "period_of_day": "Afternoon"
   },
   {
     "user_email": "tunde@mail.com",
     "name": "Weekend Routine",
     "time_of_day": "08:00",
-    "period_of_day": "MORNING"
+    "period_of_day": "Morning"
   },
   {
     "user_email": "emeka@mail.com",
-    "name": "MORNING Run Routine",
+    "name": "Morning Run Routine",
     "time_of_day": "05:30",
-    "period_of_day": "MORNING"
+    "period_of_day": "Morning"
   }
 ]

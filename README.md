@@ -6,6 +6,31 @@ Below is an organized list of features, endpoints, and calculations for each mod
 
 ---
 
+## Development Commands
+
+### Database
+
+```bash
+# Apply migrations
+uv run alembic upgrade head
+
+# Migrate and seed the database
+python -m db.migration
+```
+
+### Running the Server
+
+```bash
+# Development
+uv run fastapi dev
+
+# Production
+uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
+```
+
+---
+
+
 ## 1. User Model (`users`)
 
 **Core Responsibility:** Account management, authentication, subscriptions, and global user insights.
