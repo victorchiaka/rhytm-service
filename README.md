@@ -14,7 +14,7 @@ Below is an organized list of features, endpoints, and calculations for each mod
 # Apply migrations
 uv run alembic upgrade head
 
-# Migrate and seed the database
+# Seed to the database
 python -m db.migration
 ```
 

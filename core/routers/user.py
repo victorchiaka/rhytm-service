@@ -130,9 +130,7 @@ async def refresh_tokens(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    return await user_service.refresh_tokens(
-        refresh_token=payload.refresh_token, db=db
-    )
+    return await user_service.refresh_tokens(refresh_token=payload.refresh_token, db=db)
 
 
 @users_router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
@@ -140,9 +138,7 @@ async def get_profile(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await user_service.get_profile(
-        user_id=current_user["user_id"], db=db
-    )
+    return await user_service.get_profile(user_id=current_user["user_id"], db=db)
 
 
 @users_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

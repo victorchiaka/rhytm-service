@@ -29,15 +29,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
+from core.routers.routine import routines_router
 from core.routers.user import auth_router, users_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
+api_router.include_router(routines_router)
 
 app.include_router(api_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    for error in errors:
+        if error["msg"].startswith("Value error, "):
+            error["msg"] = error["msg"].replace("Value error, ", "", 1)
+        elif error["msg"].startswith("Assertion failed, "):
+            error["msg"] = error["msg"].replace("Assertion failed, ", "", 1)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": errors},
+    )
 
 
 @app.get("/health")

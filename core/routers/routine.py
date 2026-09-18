@@ -1,0 +1,33 @@
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.routers.user import get_current_user
+from core.schemas.routine import CreateRoutineRequest, RoutineResponse
+from core.services.routine import RoutineService
+from db.database import get_db
+
+routines_router = APIRouter(prefix="/routines", tags=["Routines"])
+
+routine_service = RoutineService()
+
+
+@routines_router.post(
+    "/new",
+    response_model=RoutineResponse,
+    status_code=status.HTTP_201_CREATED,
+    description=(
+        "Create a routine with optional inline habits. "
+        "Checks for duplicate names, period/day overlaps, "
+        "and habit scheduling conflicts before saving."
+    ),
+)
+async def create_routine(
+    payload: CreateRoutineRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoutineResponse:
+    return await routine_service.create_routine(
+        user_id=current_user["user_id"],
+        payload=payload,
+        db=db,
+    )

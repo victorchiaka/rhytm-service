@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Text, func
+from sqlalchemy import ARRAY, Column, DateTime, Enum, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -31,6 +31,10 @@ class Routine(Base):
         ),
         nullable=False,
     )
+    # Days of the week this routine runs.
+    # Integers 0–6 where 0 = Sunday, 1 = Monday … 6 = Saturday.
+    # Matches the same convention used on Habit.days_of_week.
+    frequency = Column(ARRAY(Integer), nullable=False, server_default="{}")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

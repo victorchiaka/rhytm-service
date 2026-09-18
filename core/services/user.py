@@ -337,7 +337,9 @@ class UserService:
             now = datetime.now(UTC)
             if access_exp and access_exp > now.timestamp():
                 ttl = int(access_exp - now.timestamp())
-                await rdb.set(f"blacklisted_token:{access_token}", "blacklisted", ex=ttl)
+                await rdb.set(
+                    f"blacklisted_token:{access_token}", "blacklisted", ex=ttl
+                )
         except jwt.PyJWTError:
             pass
 
