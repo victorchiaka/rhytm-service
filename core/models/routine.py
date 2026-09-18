@@ -1,10 +1,17 @@
+import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text, func
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from db.database import Base
+
+
+class PeriodOfDay(enum.Enum):
+    MORNING = "Morning"
+    AFTERNOON = "Afternoon"
+    EVENING = "Evening"
 
 
 class Routine(Base):
@@ -16,6 +23,7 @@ class Routine(Base):
     )
     name = Column(Text, nullable=False)
     time_of_day = Column(Text, nullable=False)
+    period_of_day = Column(Enum(PeriodOfDay, native_enum=False), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

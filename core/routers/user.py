@@ -4,10 +4,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.database import get_db
-from db.rdb import get_rdb
-from users.messages import USER_MESSAGES
-from users.schemas import (
+from core.messages import USER_MESSAGES
+from core.schemas.user import (
     CompleteSignupRequest,
     LoginRequest,
     LogoutRequest,
@@ -17,8 +15,10 @@ from users.schemas import (
     SignupRequest,
     UserResponse,
 )
-from users.security import decode_token
-from users.service import UserService
+from core.security import decode_token
+from core.services.user import UserService
+from db.database import get_db
+from db.rdb import get_rdb
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

@@ -1,14 +1,13 @@
 import json
 
 import aiofiles
-from alembic import command, config
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from habits.models import Habit
-from routines.models import Routine
-from users.models import User
+from core.models.habit import Habit
+from core.models.routine import Routine
+from core.models.user import User
 
 from .database import Base, get_db
 
@@ -68,6 +67,7 @@ async def seed_routines(db: AsyncSession, file_path: str):
                 user_id=user.id,
                 name=data["name"],
                 time_of_day=data["time_of_day"],
+                period_of_day=data.get("period_of_day"),
             )
             db.add(new_routine)
     await db.commit()

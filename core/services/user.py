@@ -9,10 +9,10 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from users.messages import USER_MESSAGES
-from users.models import Session, User
-from users.schemas import UserResponse
-from users.security import (
+from core.messages import USER_MESSAGES
+from core.models.user import Session, User
+from core.schemas.user import UserResponse
+from core.security import (
     create_token,
     decode_token,
     hash_password,

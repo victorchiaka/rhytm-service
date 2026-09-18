@@ -29,8 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from users.route import auth_router, users_router
 from fastapi import APIRouter
+
+from core.routers.user import auth_router, users_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
