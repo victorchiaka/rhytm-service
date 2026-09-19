@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio.engine import async_engine_from_config
 
+from core.models.habit import Habit
+from core.models.routine import Routine
+from core.models.user import Session, User
 from db.database import Base
-from habits.models import Habit
-from routines.models import Routine
-from users.models import Session, User
 
 load_dotenv()
 

@@ -4,9 +4,9 @@ from sqlalchemy import Column, DateTime, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
+from core.models.habit import Habit
+from core.models.routine import Routine
 from db.database import Base
-from habits.models import Habit
-from routines.models import Routine
 
 
 class User(Base):

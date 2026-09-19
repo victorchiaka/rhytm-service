@@ -9,10 +9,10 @@ from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from users.messages import USER_MESSAGES
-from users.models import Session, User
-from users.schemas import UserResponse
-from users.security import (
+from core.messages import USER_MESSAGES
+from core.models.user import Session, User
+from core.schemas.user import UserResponse
+from core.security import (
     create_token,
     decode_token,
     hash_password,
@@ -27,6 +27,28 @@ RESET_PASSWORD_OTP_EXPIRY_SECONDS = 600
 
 
 class UserService:
+    @staticmethod
+    def _issue_tokens(user_id, email) -> tuple[str, str]:
+        """Create a fresh access + refresh token pair."""
+        token_payload = {"sub": str(user_id), "email": email}
+        access_token = create_token(data=token_payload, token_type="access")
+        refresh_token = create_token(data=token_payload, token_type="refresh")
+        return access_token, refresh_token
+
+    @staticmethod
+    async def _persist_session(db: AsyncSession, user_id, refresh_token: str) -> None:
+        """Decode the refresh token and store a hashed session row."""
+        decoded_refresh = decode_token(refresh_token, expected_type="refresh")
+        refresh_exp = datetime.fromtimestamp(decoded_refresh["exp"], tz=UTC)
+
+        session_entry = Session(
+            user_id=user_id,
+            refresh_token_hash=hash_token(refresh_token),
+            expires_at=refresh_exp,
+        )
+        db.add(session_entry)
+        await db.commit()
+
     async def initiate_signup(
         self, email: str, full_name: str, db: AsyncSession, rdb: Redis
     ) -> dict:
@@ -337,28 +359,8 @@ class UserService:
             now = datetime.now(UTC)
             if access_exp and access_exp > now.timestamp():
                 ttl = int(access_exp - now.timestamp())
-                await rdb.set(f"blacklisted_token:{access_token}", "blacklisted", ex=ttl)
+                await rdb.set(
+                    f"blacklisted_token:{access_token}", "blacklisted", ex=ttl
+                )
         except jwt.PyJWTError:
             pass
-
-    @staticmethod
-    def _issue_tokens(user_id, email) -> tuple[str, str]:
-        """Create a fresh access + refresh token pair."""
-        token_payload = {"sub": str(user_id), "email": email}
-        access_token = create_token(data=token_payload, token_type="access")
-        refresh_token = create_token(data=token_payload, token_type="refresh")
-        return access_token, refresh_token
-
-    @staticmethod
-    async def _persist_session(db: AsyncSession, user_id, refresh_token: str) -> None:
-        """Decode the refresh token and store a hashed session row."""
-        decoded_refresh = decode_token(refresh_token, expected_type="refresh")
-        refresh_exp = datetime.fromtimestamp(decoded_refresh["exp"], tz=UTC)
-
-        session_entry = Session(
-            user_id=user_id,
-            refresh_token_hash=hash_token(refresh_token),
-            expires_at=refresh_exp,
-        )
-        db.add(session_entry)
-        await db.commit()

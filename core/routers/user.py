@@ -1,13 +1,8 @@
-import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.database import get_db
-from db.rdb import get_rdb
-from users.messages import USER_MESSAGES
-from users.schemas import (
+from core.schemas.user import (
     CompleteSignupRequest,
     LoginRequest,
     LogoutRequest,
@@ -17,33 +12,15 @@ from users.schemas import (
     SignupRequest,
     UserResponse,
 )
-from users.security import decode_token
-from users.service import UserService
-
-bearer_scheme = HTTPBearer(auto_error=False)
+from core.security import get_current_user
+from core.services.user import UserService
+from db.database import get_db
+from db.rdb import get_rdb
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 users_router = APIRouter(prefix="/users", tags=["Users"])
 
 user_service = UserService()
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict:
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.UNAUTHORIZED,
-        )
-    try:
-        payload = decode_token(credentials.credentials, expected_type="access")
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.INVALID_TOKEN,
-        )
-    return {"user_id": payload["sub"], "access_token": credentials.credentials}
 
 
 @auth_router.post("/signup", status_code=status.HTTP_200_OK)
@@ -108,17 +85,12 @@ async def reset_password(
 @auth_router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     payload: LogoutRequest,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.UNAUTHORIZED,
-        )
     return await user_service.logout(
-        access_token=credentials.credentials,
+        access_token=current_user["access_token"],
         refresh_token=payload.refresh_token,
         db=db,
         rdb=rdb,
@@ -130,9 +102,7 @@ async def refresh_tokens(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    return await user_service.refresh_tokens(
-        refresh_token=payload.refresh_token, db=db
-    )
+    return await user_service.refresh_tokens(refresh_token=payload.refresh_token, db=db)
 
 
 @users_router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
@@ -140,9 +110,7 @@ async def get_profile(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await user_service.get_profile(
-        user_id=current_user["user_id"], db=db
-    )
+    return await user_service.get_profile(user_id=current_user["user_id"], db=db)
 
 
 @users_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

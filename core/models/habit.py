@@ -1,21 +1,20 @@
 import uuid
 
 from sqlalchemy import (
-    ARRAY,
     BigInteger,
     Column,
     Date,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     Text,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
+from core.models.routine import routine_habits
 from db.database import Base
 
 
@@ -26,28 +25,29 @@ class Habit(Base):
     user_id = Column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    routine_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("routines.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     name = Column(Text, nullable=False)
     reminder_time = Column(Text, nullable=True)
     days_of_week = Column(ARRAY(Integer), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     user = relationship("User", back_populates="habits")
-    routine = relationship("Routine", back_populates="habits")
+    routines = relationship(
+        "Routine", secondary=routine_habits, back_populates="habits"
+    )
     activity_logs = relationship(
         "ActivityLog",
         back_populates="habit",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-
-    __table_args__ = (Index("idx_habits_routine", "routine_id"),)
 
 
 class ActivityLog(Base):
