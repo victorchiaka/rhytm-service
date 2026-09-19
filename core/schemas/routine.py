@@ -1,25 +1,10 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
 from core.models.routine import PeriodOfDay
-
-
-class CreateRoutineHabitInput(BaseModel):
-    name: str
-    reminder_time: Optional[str] = None
-    days_of_week: set[int]
-
-    @field_validator("days_of_week")
-    @classmethod
-    def validate_days(cls, v: set[int]) -> set[int]:
-        if not v:
-            raise ValueError("Select at least one day.")
-        if any(d < 0 or d > 6 for d in v):
-            raise ValueError("Invalid day selected.")
-        return v
+from core.schemas.habit import HabitResponse
 
 
 class CreateRoutineRequest(BaseModel):
@@ -27,7 +12,22 @@ class CreateRoutineRequest(BaseModel):
     time_of_day: str
     period_of_day: PeriodOfDay
     frequency: set[int]
-    habits: list[CreateRoutineHabitInput] = []
+    habits: list[UUID]
+
+    @field_validator("habits")
+    @classmethod
+    def validate_habits(cls, v: list[UUID]) -> list[UUID]:
+        if not v:
+            raise ValueError("You must add at least one habit to create a routine.")
+        return v
+
+    @field_validator("time_of_day")
+    @classmethod
+    def validate_time(cls, v: str) -> str:
+        import re
+        if not re.match(r"^([01]\d|2[0-3]):([0-5]\d)$", v):
+            raise ValueError("Time of day must be in HH:MM format.")
+        return v
 
     @field_validator("frequency")
     @classmethod
@@ -39,17 +39,6 @@ class CreateRoutineRequest(BaseModel):
         return v
 
 
-class HabitResponse(BaseModel):
-    id: UUID
-    name: str
-    reminder_time: Optional[str] = None
-    days_of_week: list[int]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class RoutineResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -59,6 +48,7 @@ class RoutineResponse(BaseModel):
     frequency: list[int]
     habits: list[HabitResponse]
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

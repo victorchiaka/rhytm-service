@@ -22,7 +22,17 @@ USER_MESSAGES = SimpleNamespace(
 ROUTINE_MESSAGES = SimpleNamespace(
     CREATED="Routine created successfully.",
     DUPLICATE_NAME="{name} already exists.",
-    DUPLICATE_PERIOD_ON_DAY="You already have a {period} routine on {days}.",
-    HABIT_DAYS_OUT_OF_RANGE="'{habit_name}' days must match the routine's days.",
-    HABIT_CONFLICT="'{habit_name}' is already in another {period} routine on {days}.",
+    INVALID_PERIOD_TIME="{period} routines must be between {start} and {end}.",
+    ROUTINE_TIME_TOO_CLOSE="Routines on {days} must be at least 1 hour apart.",
+    MAX_ROUTINES_PER_PERIOD="Maximum of {max_count} routines allowed per period.",
+    ROUTINE_DURATION_OVERLAP="Overlaps with '{existing_name}' on {days}.",
+    HABIT_NOT_FOUND="Habit not found.",
+    HABIT_ALREADY_IN_ROUTINE="'{habit_name}' is already in another routine.",
+    HABIT_DAYS_OUT_OF_RANGE="'{habit_name}' schedule doesn't match this routine.",
+    HABIT_CONFLICT="'{habit_name}' conflicts with a {period} routine on {days}.",
+)
+
+HABIT_MESSAGES = SimpleNamespace(
+    CREATED="Habit created successfully.",
+    HABIT_TIME_CONFLICT="A habit is already set for {time} on {days}.",
 )

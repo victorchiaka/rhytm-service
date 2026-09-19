@@ -1,10 +1,7 @@
-import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.messages import USER_MESSAGES
 from core.schemas.user import (
     CompleteSignupRequest,
     LoginRequest,
@@ -15,35 +12,15 @@ from core.schemas.user import (
     SignupRequest,
     UserResponse,
 )
-from core.security import decode_token
+from core.security import get_current_user
 from core.services.user import UserService
 from db.database import get_db
 from db.rdb import get_rdb
-
-bearer_scheme = HTTPBearer(auto_error=False)
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 users_router = APIRouter(prefix="/users", tags=["Users"])
 
 user_service = UserService()
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict:
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.UNAUTHORIZED,
-        )
-    try:
-        payload = decode_token(credentials.credentials, expected_type="access")
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.INVALID_TOKEN,
-        )
-    return {"user_id": payload["sub"], "access_token": credentials.credentials}
 
 
 @auth_router.post("/signup", status_code=status.HTTP_200_OK)
@@ -108,17 +85,12 @@ async def reset_password(
 @auth_router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     payload: LogoutRequest,
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=USER_MESSAGES.UNAUTHORIZED,
-        )
     return await user_service.logout(
-        access_token=credentials.credentials,
+        access_token=current_user["access_token"],
         refresh_token=payload.refresh_token,
         db=db,
         rdb=rdb,

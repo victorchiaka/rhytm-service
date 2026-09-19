@@ -109,12 +109,14 @@ async def seed_habits(db: AsyncSession, file_path: str):
         if existing is None:
             new_habit = Habit(
                 user_id=user.id,
-                routine_id=routine.id,
                 name=data["name"],
                 reminder_time=data.get("reminder_time"),
                 days_of_week=data["days_of_week"],
             )
+            new_habit.routines.append(routine)
             db.add(new_habit)
+        elif routine not in existing.routines:
+            existing.routines.append(routine)
     await db.commit()
 
 

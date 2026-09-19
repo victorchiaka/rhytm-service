@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
@@ -44,8 +43,8 @@ class UserResponse(BaseModel):
     full_name: str
     email: EmailStr
     plan: str
-    revenuecat_id: Optional[str] = None
-    plan_expires_at: Optional[datetime] = None
+    revenuecat_id: str | None = None
+    plan_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

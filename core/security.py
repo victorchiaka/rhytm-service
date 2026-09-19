@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWTError
 from passlib.context import CryptContext
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -48,3 +54,39 @@ def decode_token(token: str, expected_type: str | None = None) -> dict[str, Any]
     if expected_type and payload.get("type") != expected_type:
         raise jwt.InvalidTokenError(f"Invalid token type, expected {expected_type}")
     return payload
+
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    from sqlalchemy import select
+
+    from core.messages import USER_MESSAGES
+    from core.models.user import User
+
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=USER_MESSAGES.UNAUTHORIZED,
+        )
+    try:
+        payload = decode_token(credentials.credentials, expected_type="access")
+    except PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=USER_MESSAGES.INVALID_TOKEN,
+        )
+
+    user_id = payload["sub"]
+    result = await db.execute(select(User).where(User.id == user_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=USER_MESSAGES.SESSION_EXPIRED,
+        )
+
+    return {"user_id": user_id, "access_token": credentials.credentials}

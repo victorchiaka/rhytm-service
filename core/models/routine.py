@@ -1,11 +1,28 @@
 import enum
 import uuid
 
-from sqlalchemy import ARRAY, Column, DateTime, Enum, ForeignKey, Integer, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Table, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
 from db.database import Base
+
+routine_habits = Table(
+    "routine_habits",
+    Base.metadata,
+    Column(
+        "routine_id",
+        UUID(as_uuid=True),
+        ForeignKey("routines.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "habit_id",
+        UUID(as_uuid=True),
+        ForeignKey("habits.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class PeriodOfDay(enum.Enum):
@@ -38,6 +55,12 @@ class Routine(Base):
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     user = relationship("User", back_populates="routines")
-    habits = relationship("Habit", back_populates="routine", passive_deletes=True)
+    habits = relationship("Habit", secondary=routine_habits, back_populates="routines")

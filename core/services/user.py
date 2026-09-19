@@ -27,6 +27,28 @@ RESET_PASSWORD_OTP_EXPIRY_SECONDS = 600
 
 
 class UserService:
+    @staticmethod
+    def _issue_tokens(user_id, email) -> tuple[str, str]:
+        """Create a fresh access + refresh token pair."""
+        token_payload = {"sub": str(user_id), "email": email}
+        access_token = create_token(data=token_payload, token_type="access")
+        refresh_token = create_token(data=token_payload, token_type="refresh")
+        return access_token, refresh_token
+
+    @staticmethod
+    async def _persist_session(db: AsyncSession, user_id, refresh_token: str) -> None:
+        """Decode the refresh token and store a hashed session row."""
+        decoded_refresh = decode_token(refresh_token, expected_type="refresh")
+        refresh_exp = datetime.fromtimestamp(decoded_refresh["exp"], tz=UTC)
+
+        session_entry = Session(
+            user_id=user_id,
+            refresh_token_hash=hash_token(refresh_token),
+            expires_at=refresh_exp,
+        )
+        db.add(session_entry)
+        await db.commit()
+
     async def initiate_signup(
         self, email: str, full_name: str, db: AsyncSession, rdb: Redis
     ) -> dict:
@@ -342,25 +364,3 @@ class UserService:
                 )
         except jwt.PyJWTError:
             pass
-
-    @staticmethod
-    def _issue_tokens(user_id, email) -> tuple[str, str]:
-        """Create a fresh access + refresh token pair."""
-        token_payload = {"sub": str(user_id), "email": email}
-        access_token = create_token(data=token_payload, token_type="access")
-        refresh_token = create_token(data=token_payload, token_type="refresh")
-        return access_token, refresh_token
-
-    @staticmethod
-    async def _persist_session(db: AsyncSession, user_id, refresh_token: str) -> None:
-        """Decode the refresh token and store a hashed session row."""
-        decoded_refresh = decode_token(refresh_token, expected_type="refresh")
-        refresh_exp = datetime.fromtimestamp(decoded_refresh["exp"], tz=UTC)
-
-        session_entry = Session(
-            user_id=user_id,
-            refresh_token_hash=hash_token(refresh_token),
-            expires_at=refresh_exp,
-        )
-        db.add(session_entry)
-        await db.commit()

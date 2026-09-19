@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.routers.user import get_current_user
 from core.schemas.routine import CreateRoutineRequest, RoutineResponse
+from core.security import get_current_user
 from core.services.routine import RoutineService
 from db.database import get_db
 
@@ -13,7 +13,6 @@ routine_service = RoutineService()
 
 @routines_router.post(
     "/new",
-    response_model=RoutineResponse,
     status_code=status.HTTP_201_CREATED,
     description=(
         "Create a routine with optional inline habits. "
