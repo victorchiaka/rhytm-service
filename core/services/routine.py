@@ -9,18 +9,25 @@ from core.messages import ROUTINE_MESSAGES
 from core.models.habit import Habit
 from core.models.routine import PeriodOfDay, Routine
 from core.schemas.routine import CreateRoutineRequest, RoutineResponse
-from core.utils import fmt_days
+from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
 
 
 class RoutineService:
     @staticmethod
-    async def _check_name_collision(db: AsyncSession, user_id: str, name: str) -> None:
-        result = await db.execute(
-            select(Routine).where(
-                Routine.user_id == user_id,
-                func.lower(Routine.name) == name.strip().lower(),
-            )
+    async def _check_name_collision(
+        db: AsyncSession,
+        user_id: str,
+        name: str,
+        exclude_routine_id: UUID | None = None,
+    ) -> None:
+        query = select(Routine).where(
+            Routine.user_id == user_id,
+            func.lower(Routine.name) == name.strip().lower(),
         )
+        if exclude_routine_id:
+            query = query.where(Routine.id != exclude_routine_id)
+
+        result = await db.execute(query)
         if result.first():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -47,7 +54,6 @@ class RoutineService:
         end_mins = eh * 60 + em
 
         if not (start_mins <= time_mins <= end_mins):
-            # Format friendly string e.g. "12:00 AM" or "00:00"
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=ROUTINE_MESSAGES.INVALID_PERIOD_TIME.format(
@@ -59,15 +65,21 @@ class RoutineService:
 
     @staticmethod
     async def _check_period_routine_limit(
-        db: AsyncSession, user_id: str, period: PeriodOfDay, max_limit: int = 3
+        db: AsyncSession,
+        user_id: str,
+        period: PeriodOfDay,
+        max_limit: int = 3,
+        exclude_routine_id: UUID | None = None,
     ) -> None:
         """Cap the maximum number of routines allowed per period (default 3)."""
-        result = await db.execute(
-            select(func.count(Routine.id)).where(
-                Routine.user_id == user_id,
-                Routine.period_of_day == period,
-            )
+        query = select(func.count(Routine.id)).where(
+            Routine.user_id == user_id,
+            Routine.period_of_day == period,
         )
+        if exclude_routine_id:
+            query = query.where(Routine.id != exclude_routine_id)
+
+        result = await db.execute(query)
         count = result.scalar() or 0
         if count >= max_limit:
             raise HTTPException(
@@ -85,15 +97,15 @@ class RoutineService:
         frequency: list[int],
         num_habits: int = 0,
         estimated_mins_per_habit: int = 15,
+        exclude_routine_id: UUID | None = None,
     ) -> None:
         """Ensure routine does not physically overlap with existing routines on overlapping days based on start time + estimated duration (15m per habit, min 30m)."""
         h, m = map(int, time_str.split(":"))
         target_start = h * 60 + m
-        # Duration based on habit count, minimum 30 minutes
         target_duration = max(30, num_habits * estimated_mins_per_habit)
         target_end = target_start + target_duration
 
-        result = await db.execute(
+        query = (
             select(Routine)
             .options(selectinload(Routine.habits))
             .where(
@@ -101,6 +113,10 @@ class RoutineService:
                 Routine.frequency.overlap(frequency),
             )
         )
+        if exclude_routine_id:
+            query = query.where(Routine.id != exclude_routine_id)
+
+        result = await db.execute(query)
         existing_routines = result.scalars().all()
 
         for existing in existing_routines:
@@ -110,7 +126,6 @@ class RoutineService:
             existing_duration = max(30, existing_habit_count * estimated_mins_per_habit)
             existing_end = existing_start + existing_duration
 
-            # Check interval overlap: max(starts) < min(ends)
             if max(target_start, existing_start) < min(target_end, existing_end):
                 overlapping_days = set(frequency) & set(existing.frequency or [])
                 raise HTTPException(
@@ -128,6 +143,8 @@ class RoutineService:
         habit_ids: list[UUID],
         period: PeriodOfDay,
         frequency: list[int],
+        time_of_day: str,
+        exclude_routine_id: UUID | None = None,
     ) -> list[Habit]:
         """Fetch habits by ID and validate each is eligible to join the routine."""
         habits: list[Habit] = []
@@ -151,6 +168,8 @@ class RoutineService:
 
             # Check for conflict: habit cannot be in another routine in the same period on overlapping days
             for existing_routine in habit.routines:
+                if exclude_routine_id and existing_routine.id == exclude_routine_id:
+                    continue
                 if existing_routine.period_of_day == period:
                     overlapping_days = set(frequency) & set(
                         existing_routine.frequency or []
@@ -164,6 +183,35 @@ class RoutineService:
                                 days=fmt_days(list(overlapping_days)),
                             ),
                         )
+
+            # Validate habit's reminder_time fits within routine period_of_day & execution window
+            if habit.reminder_time:
+                if not is_time_in_period(period, habit.reminder_time):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=ROUTINE_MESSAGES.HABIT_REMINDER_OUT_OF_PERIOD.format(
+                            habit_name=habit.name,
+                            reminder_time=habit.reminder_time,
+                            period=(
+                                period.value
+                                if hasattr(period, "value")
+                                else str(period)
+                            ),
+                        ),
+                    )
+
+                is_earlier, diff_mins, start_str = check_reminder_before_routine(
+                    time_of_day, habit.reminder_time
+                )
+                if is_earlier:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=ROUTINE_MESSAGES.HABIT_REMINDER_TOO_EARLY.format(
+                            habit_name=habit.name,
+                            diff_mins=diff_mins,
+                            start=start_str,
+                        ),
+                    )
 
             # Validate that the habit's scheduled days fall within routine's frequency boundary
             if not set(habit.days_of_week).issubset(set(frequency)):
@@ -213,11 +261,7 @@ class RoutineService:
         payload: CreateRoutineRequest,
         db: AsyncSession,
     ) -> RoutineResponse:
-        """Create a new routine and link existing habits to it.
-
-        Validates the routine name, period/day conflicts, and each habit's
-        eligibility before persisting.
-        """
+        """Create a new routine and link existing habits to it."""
         frequency: list[int] = sorted(set(payload.frequency))
         period: PeriodOfDay = payload.period_of_day
 
@@ -226,7 +270,7 @@ class RoutineService:
         await self._check_period_routine_limit(db, user_id, period, max_limit=3)
 
         habits = await self._validate_habits_for_routine(
-            db, user_id, payload.habits, period, frequency
+            db, user_id, payload.habits, period, frequency, payload.time_of_day
         )
 
         await self._check_routine_time_spacing(
@@ -248,3 +292,70 @@ class RoutineService:
         )
 
         return RoutineResponse.model_validate(routine)
+
+    async def update_routine(
+        self,
+        user_id: str,
+        routine_id: UUID,
+        payload: CreateRoutineRequest,
+        db: AsyncSession,
+    ) -> RoutineResponse:
+        """Update an existing routine and re-evaluate all guardrail checks."""
+        result = await db.execute(
+            select(Routine)
+            .options(selectinload(Routine.habits))
+            .where(Routine.id == routine_id, Routine.user_id == user_id)
+        )
+        routine = result.scalars().first()
+        if not routine:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ROUTINE_MESSAGES.NOT_FOUND,
+            )
+
+        frequency: list[int] = sorted(set(payload.frequency))
+        period: PeriodOfDay = payload.period_of_day
+
+        await self._check_name_collision(
+            db, user_id, payload.name, exclude_routine_id=routine_id
+        )
+        self._validate_period_time_range(period, payload.time_of_day)
+        await self._check_period_routine_limit(
+            db, user_id, period, max_limit=3, exclude_routine_id=routine_id
+        )
+
+        habits = await self._validate_habits_for_routine(
+            db,
+            user_id,
+            payload.habits,
+            period,
+            frequency,
+            payload.time_of_day,
+            exclude_routine_id=routine_id,
+        )
+
+        await self._check_routine_time_spacing(
+            db,
+            user_id,
+            payload.time_of_day,
+            frequency,
+            num_habits=len(habits),
+            exclude_routine_id=routine_id,
+        )
+
+        routine.name = payload.name.strip()
+        routine.time_of_day = payload.time_of_day
+        routine.period_of_day = period
+        routine.frequency = frequency
+        routine.habits = habits
+
+        await db.commit()
+
+        refreshed_result = await db.execute(
+            select(Routine)
+            .where(Routine.id == routine.id)
+            .options(selectinload(Routine.habits))
+        )
+        updated_routine = refreshed_result.scalar_one()
+
+        return RoutineResponse.model_validate(updated_routine)

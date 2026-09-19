@@ -25,6 +25,7 @@ class CreateRoutineRequest(BaseModel):
     @classmethod
     def validate_time(cls, v: str) -> str:
         import re
+
         if not re.match(r"^([01]\d|2[0-3]):([0-5]\d)$", v):
             raise ValueError("Time of day must be in HH:MM format.")
         return v
@@ -37,6 +38,10 @@ class CreateRoutineRequest(BaseModel):
         if any(d < 0 or d > 6 for d in v):
             raise ValueError("Invalid day selected.")
         return v
+
+
+class UpdateRoutineRequest(CreateRoutineRequest):
+    pass
 
 
 class RoutineResponse(BaseModel):
