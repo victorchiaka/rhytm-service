@@ -34,6 +34,7 @@ ROUTINE_MESSAGES = SimpleNamespace(
     HABIT_CONFLICT="'{habit_name}' conflicts with a {period} routine on {days}.",
     HABIT_REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside {period} period.",
     HABIT_REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than routine start ({start}).",
+    INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
 )
 
 

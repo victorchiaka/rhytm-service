@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.status import HTTP_200_OK
 
 from core.schemas.habit import CreateHabitRequest, HabitResponse, UpdateHabitRequest
 from core.security import get_current_user
@@ -40,7 +39,7 @@ async def get_all(
 
 
 @habits_router.get(
-    "/today", status_code=HTTP_200_OK, description="Fetches Today's habits"
+    "/today", status_code=status.HTTP_200_OK, description="Fetches Today's habits"
 )
 async def get_today_habits(
     day: int,
@@ -53,7 +52,7 @@ async def get_today_habits(
 
 
 @habits_router.get(
-    "/{id}", status_code=HTTP_200_OK, description="Fetches a single habit"
+    "/{id}", status_code=status.HTTP_200_OK, description="Fetches a single habit"
 )
 async def get_habit(
     id: str,

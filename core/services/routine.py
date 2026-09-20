@@ -296,6 +296,50 @@ class RoutineService:
 
         return RoutineResponse.model_validate(routine)
 
+    async def get_all(self, user_id: str, db: AsyncSession) -> list[RoutineResponse]:
+        result = await db.execute(
+            select(Routine)
+            .options(selectinload(Routine.habits))
+            .where(Routine.user_id == user_id)
+        )
+        routines = result.scalars().all()
+        return [RoutineResponse.model_validate(r) for r in routines]
+
+    async def get_by_day(self, user_id: str, day_digit: int, db: AsyncSession) -> list[RoutineResponse]:
+        if day_digit not in range(7):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=ROUTINE_MESSAGES.INVALID_DAY_DIGIT,
+            )
+        result = await db.execute(
+            select(Routine)
+            .options(selectinload(Routine.habits))
+            .where(Routine.user_id == user_id, Routine.frequency.contains([day_digit]))
+        )
+        routines = result.scalars().all()
+        return [RoutineResponse.model_validate(r) for r in routines]
+
+    async def get_routine(self, user_id: str, routine_id: str, db: AsyncSession) -> RoutineResponse:
+        try:
+            routine_uuid = UUID(routine_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ROUTINE_MESSAGES.NOT_FOUND,
+            )
+        result = await db.execute(
+            select(Routine)
+            .options(selectinload(Routine.habits))
+            .where(Routine.id == routine_uuid, Routine.user_id == user_id)
+        )
+        routine = result.scalar_one_or_none()
+        if not routine:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ROUTINE_MESSAGES.NOT_FOUND,
+            )
+        return RoutineResponse.model_validate(routine)
+
     async def update_routine(
         self,
         user_id: str,

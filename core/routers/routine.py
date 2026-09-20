@@ -15,6 +15,41 @@ routines_router = APIRouter(prefix="/routines", tags=["Routines"])
 routine_service = RoutineService()
 
 
+@routines_router.get("/all", status_code=status.HTTP_200_OK)
+async def get_all(
+    current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[RoutineResponse]:
+    return await routine_service.get_all(user_id=current_user["user_id"], db=db)
+
+
+@routines_router.get(
+    "/today",
+    status_code=status.HTTP_200_OK,
+    description="Fetches routines scheduled on a given day",
+)
+async def get_today_routines(
+    day: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RoutineResponse]:
+    return await routine_service.get_by_day(
+        user_id=current_user["user_id"], day_digit=day, db=db
+    )
+
+
+@routines_router.get(
+    "/{id}", status_code=status.HTTP_200_OK, description="Fetches a single routine"
+)
+async def get_routine(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoutineResponse:
+    return await routine_service.get_routine(
+        user_id=current_user["user_id"], routine_id=id, db=db
+    )
+
+
 @routines_router.post(
     "/new",
     status_code=status.HTTP_201_CREATED,
