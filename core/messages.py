@@ -21,6 +21,8 @@ USER_MESSAGES = SimpleNamespace(
 
 ROUTINE_MESSAGES = SimpleNamespace(
     CREATED="Routine created successfully.",
+    UPDATED="Routine updated successfully.",
+    NOT_FOUND="Routine not found.",
     DUPLICATE_NAME="{name} already exists.",
     INVALID_PERIOD_TIME="{period} routines must be between {start} and {end}.",
     ROUTINE_TIME_TOO_CLOSE="Routines on {days} must be at least 1 hour apart.",
@@ -30,9 +32,18 @@ ROUTINE_MESSAGES = SimpleNamespace(
     HABIT_ALREADY_IN_ROUTINE="'{habit_name}' is already in another routine.",
     HABIT_DAYS_OUT_OF_RANGE="'{habit_name}' schedule doesn't match this routine.",
     HABIT_CONFLICT="'{habit_name}' conflicts with a {period} routine on {days}.",
+    HABIT_REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside {period} period.",
+    HABIT_REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than routine start ({start}).",
 )
+
 
 HABIT_MESSAGES = SimpleNamespace(
     CREATED="Habit created successfully.",
+    UPDATED="Habit updated successfully.",
+    NOT_FOUND="Habit not found.",
     HABIT_TIME_CONFLICT="A habit is already set for {time} on {days}.",
+    HABIT_DAYS_EXCEED_ROUTINE="'{habit_name}' schedule doesn't match its linked routine '{routine_name}'.",
+    REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside '{routine_name}' ({period}).",
+    REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than '{routine_name}' ({start}).",
 )
+

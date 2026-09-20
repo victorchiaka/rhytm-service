@@ -31,6 +31,10 @@ class CreateHabitRequest(CreateHabitInput):
     pass
 
 
+class UpdateHabitRequest(CreateHabitInput):
+    pass
+
+
 class HabitResponse(BaseModel):
     id: UUID
     name: str
