@@ -7,7 +7,13 @@ from sqlalchemy.orm import selectinload
 
 from core.messages import HABIT_MESSAGES, ROUTINE_MESSAGES
 from core.models.habit import Habit
-from core.schemas.habit import CreateHabitRequest, HabitResponse, UpdateHabitRequest
+from core.models.routine import Routine
+from core.schemas.habit import (
+    CreateHabitRequest,
+    DeleteHabitResponse,
+    HabitResponse,
+    UpdateHabitRequest,
+)
 from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
 
 
@@ -211,3 +217,38 @@ class HabitService:
         await db.commit()
         await db.refresh(habit)
         return HabitResponse.model_validate(habit)
+
+    async def delete_habit(
+        self, habit_id: str, user_id: str, db: AsyncSession
+    ) -> DeleteHabitResponse:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+        result = await db.execute(
+            select(Habit)
+            .options(selectinload(Habit.routines).selectinload(Routine.habits))
+            .where(Habit.id == habit_uuid, Habit.user_id == user_id)
+        )
+        habit = result.scalars().first()
+        if not habit:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+        # Routines that only have this habit in them are deleted with it
+        orphaned_routines = [r for r in habit.routines if len(r.habits) <= 1]
+
+        for routine in orphaned_routines:
+            await db.delete(routine)
+        await db.delete(habit)
+        await db.commit()
+
+        return DeleteHabitResponse(
+            message=(
+                HABIT_MESSAGES.HABIT_AND_ROUTINES_DELETED
+                if orphaned_routines
+                else HABIT_MESSAGES.HABIT_DELETED
+            )
+        )

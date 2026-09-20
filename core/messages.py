@@ -42,10 +42,11 @@ HABIT_MESSAGES = SimpleNamespace(
     CREATED="Habit created successfully.",
     UPDATED="Habit updated successfully.",
     NOT_FOUND="Habit not found.",
+    DELETED="Habit deleted successfully.",
+    HABIT_AND_ROUTINES_DELETED="Habit deleted, along with orphaned routines.",
     HABIT_TIME_CONFLICT="A habit is already set for {time} on {days}.",
     HABIT_DAYS_EXCEED_ROUTINE="'{habit_name}' schedule doesn't match its linked routine '{routine_name}'.",
     REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside '{routine_name}' ({period}).",
     REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than '{routine_name}' ({start}).",
     INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
 )
-

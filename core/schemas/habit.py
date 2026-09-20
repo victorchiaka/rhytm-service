@@ -45,3 +45,7 @@ class HabitResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DeleteHabitResponse(BaseModel):
+    message: str

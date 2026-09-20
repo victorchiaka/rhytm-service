@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.schemas.habit import CreateHabitRequest, HabitResponse, UpdateHabitRequest
+from core.schemas.habit import (
+    CreateHabitRequest,
+    DeleteHabitResponse,
+    HabitResponse,
+    UpdateHabitRequest,
+)
 from core.security import get_current_user
 from core.services.habit import HabitService
 from db.database import get_db
@@ -90,11 +95,13 @@ async def update_habit(
 @habits_router.delete(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    description="Delete a habit.",
+    description="Delete a habit. Routines left without habits are deleted with it.",
 )
 async def delete_habit(
     id: str,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> None:
-    pass
+) -> DeleteHabitResponse:
+    return await habit_service.delete_habit(
+        habit_id=id, user_id=current_user["user_id"], db=db
+    )
