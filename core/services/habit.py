@@ -115,11 +115,9 @@ class HabitService:
         self, user_id: str, payload: CreateHabitRequest, db: AsyncSession
     ) -> HabitResponse:
         habit_days = sorted(set(payload.days_of_week))
-
         await self._check_reminder_conflict(
             db, user_id, payload.reminder_time, habit_days
         )
-
         new_habit = Habit(
             user_id=user_id,
             name=payload.name.strip(),
@@ -129,21 +127,69 @@ class HabitService:
         db.add(new_habit)
         await db.commit()
         await db.refresh(new_habit)
-
         return HabitResponse.model_validate(new_habit)
+
+    async def get_all(self, user_id: str, db: AsyncSession) -> list[HabitResponse]:
+        result = await db.execute(select(Habit).where(Habit.user_id == user_id))
+        habits = result.scalars().all()
+        return [HabitResponse.model_validate(h) for h in habits]
+
+    async def get_by_day(
+        self, user_id: str, day_digit: int, db: AsyncSession
+    ) -> list[HabitResponse]:
+        if day_digit not in range(7):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
+            )
+        result = await db.execute(
+            select(Habit).where(
+                Habit.user_id == user_id, Habit.days_of_week.contains([day_digit])
+            )
+        )
+        habits = result.scalars().all()
+        return [HabitResponse.model_validate(h) for h in habits]
+
+    async def get_habit(
+        self, user_id: str, habit_id: str, db: AsyncSession
+    ) -> HabitResponse:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
+        result = await db.execute(
+            select(Habit).where(Habit.id == habit_uuid, Habit.user_id == user_id)
+        )
+        habit = result.scalar_one_or_none()
+        if not habit:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
+        return HabitResponse.model_validate(habit)
 
     async def update_habit(
         self,
+        habit_id: str,
         user_id: str,
-        habit_id: UUID,
         payload: UpdateHabitRequest,
         db: AsyncSession,
     ) -> HabitResponse:
         """Update an existing habit and evaluate standalone & routine compatibility guardrails."""
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines))
-            .where(Habit.id == habit_id, Habit.user_id == user_id)
+            .where(Habit.id == habit_uuid, Habit.user_id == user_id)
         )
         habit = result.scalars().first()
         if not habit:
@@ -151,23 +197,17 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
-
         habit_days = sorted(set(payload.days_of_week))
-
         await self._check_reminder_conflict(
-            db, user_id, payload.reminder_time, habit_days, exclude_habit_id=habit_id
+            db, user_id, payload.reminder_time, habit_days, exclude_habit_id=habit_uuid
         )
-
         if habit.routines:
             self._validate_habit_routines_compatibility(
                 payload.name.strip(), habit_days, payload.reminder_time, habit.routines
             )
-
         habit.name = payload.name.strip()
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
-
         await db.commit()
         await db.refresh(habit)
-
         return HabitResponse.model_validate(habit)

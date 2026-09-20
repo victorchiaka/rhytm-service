@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,7 +37,7 @@ async def create_routine(
 
 
 @routines_router.put(
-    "/{routine_id}",
+    "/{id}",
     status_code=status.HTTP_200_OK,
     description=(
         "Update an existing routine. "
@@ -48,14 +46,14 @@ async def create_routine(
     ),
 )
 async def update_routine(
-    routine_id: UUID,
+    id: str,
     payload: UpdateRoutineRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RoutineResponse:
     return await routine_service.update_routine(
+        id=id,
         user_id=current_user["user_id"],
-        routine_id=routine_id,
         payload=payload,
         db=db,
     )

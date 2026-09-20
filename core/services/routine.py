@@ -299,15 +299,22 @@ class RoutineService:
     async def update_routine(
         self,
         user_id: str,
-        routine_id: UUID,
+        id: str,
         payload: CreateRoutineRequest,
         db: AsyncSession,
     ) -> RoutineResponse:
         """Update an existing routine and re-evaluate all guardrail checks."""
+        try:
+            routine_uuid = UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ROUTINE_MESSAGES.NOT_FOUND,
+            )
         result = await db.execute(
             select(Routine)
             .options(selectinload(Routine.habits))
-            .where(Routine.id == routine_id, Routine.user_id == user_id)
+            .where(Routine.id == routine_uuid, Routine.user_id == user_id)
         )
         routine = result.scalars().first()
         if not routine:
@@ -320,11 +327,11 @@ class RoutineService:
         period: PeriodOfDay = payload.period_of_day
 
         await self._check_name_collision(
-            db, user_id, payload.name, exclude_routine_id=routine_id
+            db, user_id, payload.name, exclude_routine_id=routine_uuid
         )
         self._validate_period_time_range(period, payload.time_of_day)
         await self._check_period_routine_limit(
-            db, user_id, period, max_limit=3, exclude_routine_id=routine_id
+            db, user_id, period, max_limit=3, exclude_routine_id=routine_uuid
         )
 
         habits = await self._validate_habits_for_routine(
@@ -334,7 +341,7 @@ class RoutineService:
             period,
             frequency,
             payload.time_of_day,
-            exclude_routine_id=routine_id,
+            exclude_routine_id=routine_uuid,
         )
 
         await self._check_routine_time_spacing(
@@ -343,7 +350,7 @@ class RoutineService:
             payload.time_of_day,
             frequency,
             num_habits=len(habits),
-            exclude_routine_id=routine_id,
+            exclude_routine_id=routine_uuid,
         )
 
         routine.name = payload.name.strip()
