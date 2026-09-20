@@ -148,6 +148,8 @@ class RoutineService:
     ) -> list[Habit]:
         """Fetch habits by ID and validate each is eligible to join the routine."""
         habits: list[Habit] = []
+        freq_set = set(frequency)
+        period_val = period.value if hasattr(period, "value") else str(period)
 
         for habit_id in habit_ids:
             result = await db.execute(
@@ -166,25 +168,27 @@ class RoutineService:
                     detail=ROUTINE_MESSAGES.HABIT_NOT_FOUND.format(habit_id=habit_id),
                 )
 
-            # Check for conflict: habit cannot be in another routine in the same period on overlapping days
-            for existing_routine in habit.routines:
-                if exclude_routine_id and existing_routine.id == exclude_routine_id:
-                    continue
-                if existing_routine.period_of_day == period:
-                    overlapping_days = set(frequency) & set(
-                        existing_routine.frequency or []
-                    )
-                    if overlapping_days:
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail=ROUTINE_MESSAGES.HABIT_CONFLICT.format(
-                                habit_name=habit.name,
-                                period=period.value,
-                                days=fmt_days(list(overlapping_days)),
-                            ),
-                        )
+            conflict = next(
+                (
+                    r
+                    for r in habit.routines
+                    if r.id != exclude_routine_id
+                    and r.period_of_day == period
+                    and (set(r.frequency or []) & freq_set)
+                ),
+                None,
+            )
+            if conflict:
+                overlap = freq_set & set(conflict.frequency or [])
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=ROUTINE_MESSAGES.HABIT_CONFLICT.format(
+                        habit_name=habit.name,
+                        period=period_val,
+                        days=fmt_days(list(overlap)),
+                    ),
+                )
 
-            # Validate habit's reminder_time fits within routine period_of_day & execution window
             if habit.reminder_time:
                 if not is_time_in_period(period, habit.reminder_time):
                     raise HTTPException(
@@ -213,7 +217,6 @@ class RoutineService:
                         ),
                     )
 
-            # Validate that the habit's scheduled days fall within routine's frequency boundary
             if not set(habit.days_of_week).issubset(set(frequency)):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -57,7 +57,6 @@ class HabitService:
         for routine in routines:
             routine_frequency_set = set(routine.frequency or [])
 
-            # 1. Boundary Check: Habit days must remain a subset of every attached routine's frequency
             if not habit_days_set.issubset(routine_frequency_set):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -67,7 +66,6 @@ class HabitService:
                     ),
                 )
 
-            # 2. Reminder Time Check: Habit reminder_time must fall within routine period_of_day & execution window
             period = routine.period_of_day
             period_key = period.value if hasattr(period, "value") else str(period)
             if reminder_time:
@@ -96,7 +94,6 @@ class HabitService:
                         ),
                     )
 
-            # 3. Inter-Routine Conflict Check: Habit cannot belong to multiple routines in the same period on overlapping days
             active_days = habit_days_set & routine_frequency_set
             period_days_map = seen_days_by_period.setdefault(period_key, {})
 
