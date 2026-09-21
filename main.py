@@ -1,9 +1,13 @@
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from core.jobs.sweep import start_sweep_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,10 +19,21 @@ load_dotenv()
 
 version = os.getenv("API_VERSION", "0.0.1")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sweep_task = asyncio.create_task(
+        start_sweep_scheduler(default_idle_seconds=30.0, active_interval_seconds=10.0)
+    )
+    yield
+    sweep_task.cancel()
+
+
 app = FastAPI(
     title="Rhytm API",
     description="API for the Rhytm Service",
     version=version,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

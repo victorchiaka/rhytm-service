@@ -7,7 +7,13 @@ from sqlalchemy.orm import selectinload
 
 from core.messages import HABIT_MESSAGES, ROUTINE_MESSAGES
 from core.models.habit import Habit
-from core.schemas.habit import CreateHabitRequest, HabitResponse, UpdateHabitRequest
+from core.models.routine import Routine
+from core.schemas.habit import (
+    CreateHabitRequest,
+    DeleteHabitResponse,
+    HabitResponse,
+    UpdateHabitRequest,
+)
 from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
 
 
@@ -28,6 +34,7 @@ class HabitService:
             Habit.user_id == user_id,
             Habit.reminder_time == reminder_time,
             Habit.days_of_week.overlap(habit_days),
+            Habit.deleted_at.is_(None),
         )
         if exclude_habit_id:
             query = query.where(Habit.id != exclude_habit_id)
@@ -54,7 +61,11 @@ class HabitService:
         habit_days_set = set(habit_days)
         seen_days_by_period: dict[str, dict[int, str]] = {}
 
-        for routine in routines:
+        active_routines = [
+            r for r in routines if getattr(r, "deleted_at", None) is None
+        ]
+
+        for routine in active_routines:
             routine_frequency_set = set(routine.frequency or [])
 
             if not habit_days_set.issubset(routine_frequency_set):
@@ -115,11 +126,9 @@ class HabitService:
         self, user_id: str, payload: CreateHabitRequest, db: AsyncSession
     ) -> HabitResponse:
         habit_days = sorted(set(payload.days_of_week))
-
         await self._check_reminder_conflict(
             db, user_id, payload.reminder_time, habit_days
         )
-
         new_habit = Habit(
             user_id=user_id,
             name=payload.name.strip(),
@@ -129,21 +138,81 @@ class HabitService:
         db.add(new_habit)
         await db.commit()
         await db.refresh(new_habit)
-
         return HabitResponse.model_validate(new_habit)
+
+    async def get_all(self, user_id: str, db: AsyncSession) -> list[HabitResponse]:
+        result = await db.execute(
+            select(Habit).where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
+        )
+        habits = result.scalars().all()
+        return [HabitResponse.model_validate(h) for h in habits]
+
+    async def get_by_day(
+        self, user_id: str, day_digit: int, db: AsyncSession
+    ) -> list[HabitResponse]:
+        if day_digit not in range(7):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
+            )
+        result = await db.execute(
+            select(Habit).where(
+                Habit.user_id == user_id,
+                Habit.days_of_week.contains([day_digit]),
+                Habit.deleted_at.is_(None),
+            )
+        )
+        habits = result.scalars().all()
+        return [HabitResponse.model_validate(h) for h in habits]
+
+    async def get_habit(
+        self, user_id: str, habit_id: str, db: AsyncSession
+    ) -> HabitResponse:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
+        result = await db.execute(
+            select(Habit).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        habit = result.scalar_one_or_none()
+        if not habit:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
+        return HabitResponse.model_validate(habit)
 
     async def update_habit(
         self,
+        habit_id: str,
         user_id: str,
-        habit_id: UUID,
         payload: UpdateHabitRequest,
         db: AsyncSession,
     ) -> HabitResponse:
         """Update an existing habit and evaluate standalone & routine compatibility guardrails."""
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=HABIT_MESSAGES.NOT_FOUND,
+            )
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines))
-            .where(Habit.id == habit_id, Habit.user_id == user_id)
+            .where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
         )
         habit = result.scalars().first()
         if not habit:
@@ -151,23 +220,61 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
-
         habit_days = sorted(set(payload.days_of_week))
-
         await self._check_reminder_conflict(
-            db, user_id, payload.reminder_time, habit_days, exclude_habit_id=habit_id
+            db, user_id, payload.reminder_time, habit_days, exclude_habit_id=habit_uuid
         )
-
         if habit.routines:
             self._validate_habit_routines_compatibility(
                 payload.name.strip(), habit_days, payload.reminder_time, habit.routines
             )
-
         habit.name = payload.name.strip()
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
-
         await db.commit()
         await db.refresh(habit)
-
         return HabitResponse.model_validate(habit)
+
+    async def delete_habit(
+        self, habit_id: str, user_id: str, db: AsyncSession
+    ) -> DeleteHabitResponse:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+        result = await db.execute(
+            select(Habit)
+            .options(selectinload(Habit.routines).selectinload(Routine.habits))
+            .where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        habit = result.scalars().first()
+        if not habit:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+        # Routines that only have this habit in them are deleted with it
+        active_routines = [r for r in habit.routines if r.deleted_at is None]
+        orphaned_routines = [
+            r
+            for r in active_routines
+            if len([h for h in r.habits if h.deleted_at is None]) <= 1
+        ]
+
+        for routine in orphaned_routines:
+            await db.delete(routine)
+        await db.delete(habit)
+        await db.commit()
+
+        return DeleteHabitResponse(
+            message=(
+                HABIT_MESSAGES.HABIT_AND_ROUTINES_DELETED
+                if orphaned_routines
+                else HABIT_MESSAGES.DELETED
+            )
+        )

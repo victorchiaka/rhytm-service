@@ -1,20 +1,112 @@
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.schemas.routine import (
+    ConfirmDeleteResponse,
     CreateRoutineRequest,
+    DeleteCheckResponse,
     RoutineResponse,
+    UndoDeleteResponse,
     UpdateRoutineRequest,
 )
 from core.security import get_current_user
 from core.services.routine import RoutineService
 from db.database import get_db
+from db.rdb import get_rdb
 
 routines_router = APIRouter(prefix="/routines", tags=["Routines"])
 
 routine_service = RoutineService()
+
+
+@routines_router.get("/all", status_code=status.HTTP_200_OK)
+async def get_all(
+    current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[RoutineResponse]:
+    return await routine_service.get_all(user_id=current_user["user_id"], db=db)
+
+
+@routines_router.get(
+    "/today",
+    status_code=status.HTTP_200_OK,
+    description="Fetches routines scheduled on a given day",
+)
+async def get_today_routines(
+    day: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[RoutineResponse]:
+    return await routine_service.get_by_day(
+        user_id=current_user["user_id"], day_digit=day, db=db
+    )
+
+
+@routines_router.get(
+    "/{id}", status_code=status.HTTP_200_OK, description="Fetches a single routine"
+)
+async def get_routine(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> RoutineResponse:
+    return await routine_service.get_routine(
+        user_id=current_user["user_id"], routine_id=id, db=db
+    )
+
+
+@routines_router.post(
+    "/{id}/delete-check",
+    status_code=status.HTTP_200_OK,
+    description="Check habits affected by deleting this routine and return a short-lived token",
+)
+async def check_routine_deletion(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    rdb: Redis = Depends(get_rdb),
+) -> DeleteCheckResponse:
+    return await routine_service.check_routine_deletion(
+        user_id=current_user["user_id"], routine_id=id, db=db, rdb=rdb
+    )
+
+
+@routines_router.delete(
+    "/{id}",
+    status_code=status.HTTP_200_OK,
+    description="Confirm soft deletion of a routine (routine_only or exclusive mode)",
+)
+async def confirm_routine_deletion(
+    id: str,
+    mode: str = Query(default="routine_only", description="Deletion mode: 'routine_only' or 'exclusive'"),
+    token: str | None = Query(default=None, description="Redis deletion check token (required for exclusive mode)"),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    rdb: Redis = Depends(get_rdb),
+) -> ConfirmDeleteResponse:
+    return await routine_service.confirm_routine_deletion(
+        user_id=current_user["user_id"],
+        routine_id=id,
+        mode=mode,
+        token=token,
+        db=db,
+        rdb=rdb,
+    )
+
+
+@routines_router.post(
+    "/deletions/{id}/undo",
+    status_code=status.HTTP_200_OK,
+    description="Undo a soft-deleted routine within its 14-second window",
+)
+async def undo_deletion(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UndoDeleteResponse:
+    return await routine_service.undo_deletion(
+        user_id=current_user["user_id"], deletion_id=id, db=db
+    )
 
 
 @routines_router.post(
@@ -39,7 +131,7 @@ async def create_routine(
 
 
 @routines_router.put(
-    "/{routine_id}",
+    "/{id}",
     status_code=status.HTTP_200_OK,
     description=(
         "Update an existing routine. "
@@ -48,14 +140,14 @@ async def create_routine(
     ),
 )
 async def update_routine(
-    routine_id: UUID,
+    id: str,
     payload: UpdateRoutineRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RoutineResponse:
     return await routine_service.update_routine(
+        id=id,
         user_id=current_user["user_id"],
-        routine_id=routine_id,
         payload=payload,
         db=db,
     )

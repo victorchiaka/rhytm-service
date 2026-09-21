@@ -28,6 +28,12 @@ class Habit(Base):
     name = Column(Text, nullable=False)
     reminder_time = Column(Text, nullable=True)
     days_of_week = Column(ARRAY(Integer), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deletion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("deletions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -42,6 +48,7 @@ class Habit(Base):
     routines = relationship(
         "Routine", secondary=routine_habits, back_populates="habits"
     )
+    deletion = relationship("Deletion", foreign_keys=[deletion_id])
     activity_logs = relationship(
         "ActivityLog",
         back_populates="habit",

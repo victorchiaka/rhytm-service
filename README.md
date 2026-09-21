@@ -36,11 +36,6 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 **Core Responsibility:** Account management, authentication, subscriptions, and global user insights.
 
 ### Features & Endpoints
-- **Authentication & Sessions**
-  - `POST /users/register` - Create an account.
-  - `POST /users/login` - Authenticate and create a session.
-  - `POST /users/refresh` - Refresh access tokens.
-  - `POST /users/logout` - Terminate a session.
 - **Monetization & Paywall (Premium Features)**
   - `GET /users/plan` - Fetch current subscription status (RevenueCat integration).
   - `POST /users/webhook/revenuecat` - Webhook to dynamically push benefits and update `plan` / `plan_expires_at`.
