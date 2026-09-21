@@ -249,6 +249,6 @@ class HabitService:
             message=(
                 HABIT_MESSAGES.HABIT_AND_ROUTINES_DELETED
                 if orphaned_routines
-                else HABIT_MESSAGES.HABIT_DELETED
+                else HABIT_MESSAGES.DELETED
             )
         )

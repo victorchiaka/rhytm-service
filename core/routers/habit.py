@@ -73,7 +73,7 @@ async def get_habit(
     "/{id}",
     status_code=status.HTTP_200_OK,
     description=(
-        "Update an existing habit. "
+        "Update an existing habit."
         "Evaluates standalone reminder time conflicts and frequency compatibility "
         "across all attached routines."
     ),
@@ -94,7 +94,7 @@ async def update_habit(
 
 @habits_router.delete(
     "/{id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     description="Delete a habit. Routines left without habits are deleted with it.",
 )
 async def delete_habit(
