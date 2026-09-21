@@ -34,6 +34,7 @@ class HabitService:
             Habit.user_id == user_id,
             Habit.reminder_time == reminder_time,
             Habit.days_of_week.overlap(habit_days),
+            Habit.deleted_at.is_(None),
         )
         if exclude_habit_id:
             query = query.where(Habit.id != exclude_habit_id)
@@ -60,7 +61,11 @@ class HabitService:
         habit_days_set = set(habit_days)
         seen_days_by_period: dict[str, dict[int, str]] = {}
 
-        for routine in routines:
+        active_routines = [
+            r for r in routines if getattr(r, "deleted_at", None) is None
+        ]
+
+        for routine in active_routines:
             routine_frequency_set = set(routine.frequency or [])
 
             if not habit_days_set.issubset(routine_frequency_set):
@@ -136,7 +141,9 @@ class HabitService:
         return HabitResponse.model_validate(new_habit)
 
     async def get_all(self, user_id: str, db: AsyncSession) -> list[HabitResponse]:
-        result = await db.execute(select(Habit).where(Habit.user_id == user_id))
+        result = await db.execute(
+            select(Habit).where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
+        )
         habits = result.scalars().all()
         return [HabitResponse.model_validate(h) for h in habits]
 
@@ -150,7 +157,9 @@ class HabitService:
             )
         result = await db.execute(
             select(Habit).where(
-                Habit.user_id == user_id, Habit.days_of_week.contains([day_digit])
+                Habit.user_id == user_id,
+                Habit.days_of_week.contains([day_digit]),
+                Habit.deleted_at.is_(None),
             )
         )
         habits = result.scalars().all()
@@ -167,7 +176,11 @@ class HabitService:
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
         result = await db.execute(
-            select(Habit).where(Habit.id == habit_uuid, Habit.user_id == user_id)
+            select(Habit).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
         )
         habit = result.scalar_one_or_none()
         if not habit:
@@ -195,7 +208,11 @@ class HabitService:
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines))
-            .where(Habit.id == habit_uuid, Habit.user_id == user_id)
+            .where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
         )
         habit = result.scalars().first()
         if not habit:
@@ -230,7 +247,11 @@ class HabitService:
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines).selectinload(Routine.habits))
-            .where(Habit.id == habit_uuid, Habit.user_id == user_id)
+            .where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
         )
         habit = result.scalars().first()
         if not habit:
@@ -238,7 +259,12 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
             )
         # Routines that only have this habit in them are deleted with it
-        orphaned_routines = [r for r in habit.routines if len(r.habits) <= 1]
+        active_routines = [r for r in habit.routines if r.deleted_at is None]
+        orphaned_routines = [
+            r
+            for r in active_routines
+            if len([h for h in r.habits if h.deleted_at is None]) <= 1
+        ]
 
         for routine in orphaned_routines:
             await db.delete(routine)

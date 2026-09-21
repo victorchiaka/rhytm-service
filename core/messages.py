@@ -35,6 +35,12 @@ ROUTINE_MESSAGES = SimpleNamespace(
     HABIT_REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside {period} period.",
     HABIT_REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than routine start ({start}).",
     INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
+    INVALID_DELETE_TOKEN="Invalid or expired deletion token.",
+    DELETION_NOT_FOUND="Deletion record not found.",
+    UNDO_EXPIRED="Undo window has expired.",
+    DELETION_CONFIRMED="Routine deleted successfully.",
+    UNDO_SUCCESS="Routine restored successfully.",
+    DELETE_CHECK_SUCCESS="Routine deletion check completed.",
 )
 
 

@@ -57,3 +57,40 @@ class RoutineResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OtherRoutineInfo(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class SharedHabitInfo(BaseModel):
+    habit: HabitResponse
+    other_routines: list[OtherRoutineInfo]
+
+
+class DeleteCheckResponse(BaseModel):
+    routine_id: UUID
+    routine_name: str
+    exclusive_habits: list[HabitResponse]
+    shared_habits: list[SharedHabitInfo]
+    token: str
+
+
+class ConfirmDeleteResponse(BaseModel):
+    deletion_id: UUID
+    routine_id: UUID
+    mode: str
+    habits_deleted_count: int
+    deleted_habits: list[HabitResponse]
+    undo_deadline: datetime
+
+
+class UndoDeleteResponse(BaseModel):
+    message: str
+    restored_routine: RoutineResponse
+
+
