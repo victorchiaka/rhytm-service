@@ -8,8 +8,11 @@ from fastapi import HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from core.messages import USER_MESSAGES
+from core.models.habit import Habit
+from core.models.routine import Routine
 from core.models.user import Session, User
 from core.schemas.user import UserResponse
 from core.security import (
@@ -117,22 +120,44 @@ class UserService:
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+
+        # Fetch the user and return
+        query = await db.execute(
+            select(User)
+            .options(
+                selectinload(User.routines.and_(Routine.deleted_at.is_(None)))
+                .selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+            )
+            .where(User.email == normalized_email)
+        )
+        user = query.scalar_one_or_none()
+
         await rdb.delete(redis_key)
 
-        access_token, refresh_token = self._issue_tokens(new_user.id, new_user.email)
-        await self._persist_session(db, new_user.id, refresh_token)
+        access_token, refresh_token = self._issue_tokens(user.id, user.email)
+        await self._persist_session(db, user.id, refresh_token)
 
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "user": UserResponse.model_validate(new_user).model_dump(),
+            "user": UserResponse.model_validate(user).model_dump(),
         }
 
     async def login(self, email: str, password: str, db: AsyncSession) -> dict:
         normalized_email = email.lower()
 
-        result = await db.execute(select(User).where(User.email == normalized_email))
+        result = await db.execute(
+            select(User)
+            .options(
+                selectinload(
+                    User.routines.and_(Routine.deleted_at.is_(None))
+                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+            )
+            .where(User.email == normalized_email)
+        )
         user = result.scalar_one_or_none()
         if not user or not verify_password(password, user.password):
             raise HTTPException(
@@ -329,7 +354,16 @@ class UserService:
         }
 
     async def get_profile(self, user_id: str, db: AsyncSession) -> dict:
-        result = await db.execute(select(User).where(User.id == user_id))
+        result = await db.execute(
+            select(User)
+            .options(
+                selectinload(
+                    User.routines.and_(Routine.deleted_at.is_(None))
+                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+            )
+            .where(User.id == user_id)
+        )
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(

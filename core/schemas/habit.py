@@ -35,7 +35,7 @@ class UpdateHabitRequest(CreateHabitInput):
     pass
 
 
-class HabitResponse(BaseModel):
+class HabitShape(BaseModel):
     id: UUID
     name: str
     reminder_time: str | None = None
@@ -45,6 +45,10 @@ class HabitResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class HabitResponse(HabitShape):
+    pass
 
 
 class DeleteHabitResponse(BaseModel):

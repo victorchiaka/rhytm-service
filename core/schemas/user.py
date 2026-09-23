@@ -3,6 +3,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
+from core.schemas.habit import HabitResponse
+from core.schemas.routine import RoutineResponse
+
 
 class SignupRequest(BaseModel):
     full_name: str
@@ -47,6 +50,8 @@ class UserResponse(BaseModel):
     plan_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    routines: list[RoutineResponse] = []
+    habits: list[HabitResponse] = []
 
     class Config:
         from_attributes = True

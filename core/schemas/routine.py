@@ -44,7 +44,7 @@ class UpdateRoutineRequest(CreateRoutineRequest):
     pass
 
 
-class RoutineResponse(BaseModel):
+class RoutineShape(BaseModel):
     id: UUID
     user_id: UUID
     name: str
@@ -57,6 +57,10 @@ class RoutineResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RoutineResponse(RoutineShape):
+    pass
 
 
 class OtherRoutineInfo(BaseModel):
@@ -92,5 +96,3 @@ class ConfirmDeleteResponse(BaseModel):
 class UndoDeleteResponse(BaseModel):
     message: str
     restored_routine: RoutineResponse
-
-
