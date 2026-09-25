@@ -22,6 +22,7 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "redis",
     "sqlalchemy>=2.0.52",
+    "stripe>=15.6.1",
 ]
 
 [project.scripts]

@@ -45,7 +45,8 @@ class UserResponse(BaseModel):
     id: UUID
     full_name: str
     email: EmailStr
-    plan: str
+    plan: str | None = None
+    subscription_status: str = "basic"
     revenuecat_id: str | None = None
     plan_expires_at: datetime | None = None
     created_at: datetime

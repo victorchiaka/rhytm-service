@@ -16,8 +16,12 @@ class User(Base):
     full_name = Column(Text, nullable=False)
     email = Column(Text, nullable=False, unique=True)
     password = Column(Text, nullable=False)
-    plan = Column(Text, nullable=False, default="basic")
+    plan = Column(Text, nullable=True, server_default=None)
+    subscription_status = Column(
+        Text, nullable=False, server_default="basic", default="basic"
+    )
     revenuecat_id = Column(Text, unique=True, nullable=True)
+    stripe_customer_id = Column(Text, unique=True, nullable=True, index=True)
     plan_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

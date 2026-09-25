@@ -56,3 +56,10 @@ HABIT_MESSAGES = SimpleNamespace(
     REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than '{routine_name}' ({start}).",
     INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
 )
+
+SUBSCRIPTION_MESSAGES = SimpleNamespace(
+    SUBSCRIPTION_INITIATED="Subscription initiated. Complete payment to activate.",
+    INVALID_PLAN="Invalid plan. Choose 'monthly' or 'yearly'.",
+    USER_NOT_FOUND="User not found.",
+    INVALID_WEBHOOK_SIGNATURE="Invalid webhook signature.",
+)

@@ -1,0 +1,9 @@
+{
+  "features": [
+    {"name": "Habits", "basic": {"type": "text", "value": "2"}, "pro": {"type": "text", "value": "Unlimited"}},
+    {"name": "AI Suggestions", "basic": {"type": "not_included"}, "pro": {"type": "included"}},
+    {"name": "Data Export", "basic": {"type": "not_included"}, "pro": {"type": "included"}},
+    {"name": "Year-wide stats preview", "basic": {"type": "not_included"}, "pro": {"type": "included"}},
+    {"name": "Routine Management", "basic": {"type": "not_included"}, "pro": {"type": "included"}}
+  ]
+}

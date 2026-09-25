@@ -36,10 +36,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 **Core Responsibility:** Account management, authentication, subscriptions, and global user insights.
 
 ### Features & Endpoints
-- **Monetization & Paywall (Premium Features)**
-  - `GET /users/plan` - Fetch current subscription status (RevenueCat integration).
-  - `POST /users/webhook/revenuecat` - Webhook to dynamically push benefits and update `plan` / `plan_expires_at`.
-- **Data Export (Premium)**
+- **Data Export (Pro)**
   - `GET /users/export/excel` - Generate an Excel file containing all routines, habits, and activity logs.
   - `GET /users/export/pdf` - Generate a visually appealing PDF report of user consistency and improvements with a custom watermark/logo.
 - **Global Aggregates**
@@ -52,10 +49,6 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 **Core Responsibility:** Grouping habits by specific times of day (e.g., "Morning Workflow", "Evening Wind Down").
 
 ### Features & Endpoints
-- **Smart Creation & Organization**
-  - `POST /routines` - Create a routine. *Logic: Check if a routine with a similar name or time of day already exists to prevent duplicates.*
-  - `PUT /routines/{id}` - Update a routine.
-  - `DELETE /routines/{id}` - Delete a routine (cascades to or detaches habits).
 - **Routine Analytics**
   - `GET /routines/{id}/completion-rate` - Calculate the completion percentage of all habits within this routine for a given date range.
   - `GET /routines/insights` - List all routines ordered by their consistency scores (which routines is the user best/worst at?).
@@ -67,10 +60,6 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 **Core Responsibility:** Individual actionable items that need to be tracked, linked to routines.
 
 ### Features & Endpoints
-- **Smart Habit Management**
-  - `POST /habits` - Create a new habit. *Logic: Suggest existing habits if the user tries to create a duplicate. Require assigning to a routine for better organization.*
-  - `PUT /habits/{id}` - Update habit details (name, reminder time, days of week).
-  - `DELETE /habits/{id}` - Delete a habit.
 - **Push Notifications**
   - `POST /habits/sync-reminders` - Sync `reminder_time` and `days_of_week` with a Firebase Cloud Messaging worker to push notifications dynamically.
 - **Performance & Improvement Calculations**
@@ -123,3 +112,11 @@ This phased approach allows for gradual feature rollout and justified price bump
 - [ ] Setup RevenueCat webhooks and validate premium status in middleware.
 - [ ] Create PDF/Excel generation utility functions.
 - [ ] Write complex SQL queries / SQLAlchemy expressions for consistency calculations.
+
+---
+
+## 6. Subscriptions (Future / Admin Portal)
+
+- **`POST /subscriptions/benefits`** — Add/update paywall feature entries (e.g. feature name, basic value, pro value).
+  Requires a private admin portal (owner-only). Do NOT expose publicly. This will replace the current hardcoded seed in `populate_benefits()`.
+  The portal will be a separate internal tool — implement when the admin dashboard is ready.
