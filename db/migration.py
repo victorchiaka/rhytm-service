@@ -33,7 +33,8 @@ async def seed_users(db: AsyncSession, file_path: str):
                 full_name=data["full_name"],
                 email=data["email"],
                 password=hashed_password,
-                plan=data["plan"],
+                plan=data.get("plan"),
+                subscription_status=data.get("subscription_status", "basic"),
             )
             db.add(new_user)
     await db.commit()

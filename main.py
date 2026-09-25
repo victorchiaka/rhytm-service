@@ -38,8 +38,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,6 +50,7 @@ from fastapi.responses import JSONResponse
 
 from core.routers.habit import habits_router
 from core.routers.routine import routines_router
+from core.routers.subscription import subscriptions_router
 from core.routers.user import auth_router, users_router
 
 api_router = APIRouter(prefix="/api")
@@ -57,6 +58,7 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(habits_router)
 api_router.include_router(routines_router)
+api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
 
