@@ -1,9 +1,11 @@
 import json
 import logging
+import os
 import secrets
 from datetime import UTC, datetime
 
 import jwt
+from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy import delete, select
@@ -22,11 +24,16 @@ from core.security import (
     hash_token,
     verify_password,
 )
+from core.utils import send_email_otp, send_welcome_mail
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 SIGNUP_OTP_EXPIRY_SECONDS = 600
 RESET_PASSWORD_OTP_EXPIRY_SECONDS = 600
+
+ENVIRONMENT = str(os.getenv("ENVIRONMENT"))
 
 
 class UserService:
@@ -64,7 +71,8 @@ class UserService:
                 detail=USER_MESSAGES.USER_EXISTS,
             )
 
-        otp = f"{secrets.randbelow(10000):04d}"
+        otp = f"{secrets.randbelow(10000):04d}" if ENVIRONMENT == "prod" else "0000"
+
         redis_key = f"signup_otp:{normalized_email}"
         signup_data = {
             "full_name": full_name,
@@ -73,11 +81,20 @@ class UserService:
         }
         await rdb.set(redis_key, json.dumps(signup_data), ex=SIGNUP_OTP_EXPIRY_SECONDS)
 
-        # Log OTP to console for now
-        # TODO: Set up email OTP sending service (SMTP / SendGrid / Resend / AWS SES)
-        logger.info(f"[SIGNUP OTP] OTP for {normalized_email} is: {otp}")
+        if ENVIRONMENT == "prod":
+            send_email_otp(
+                to_mail=normalized_email,
+                name=full_name,
+                otp=otp,
+                expiry_minutes=SIGNUP_OTP_EXPIRY_SECONDS // 60,
+            )
+        else:
+            # Log OTP to console for dev environment
+            logger.info(f"[SIGNUP OTP] OTP for {normalized_email} is: {otp}")
 
-        return {"message": USER_MESSAGES.OTP_SENT}
+        message = USER_MESSAGES.OTP_SENT if ENVIRONMENT == "prod" else "Dev otp is 0000"
+
+        return {"message": message}
 
     async def complete_signup(
         self,
@@ -125,8 +142,9 @@ class UserService:
         query = await db.execute(
             select(User)
             .options(
-                selectinload(User.routines.and_(Routine.deleted_at.is_(None)))
-                .selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(
+                    User.routines.and_(Routine.deleted_at.is_(None))
+                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
                 selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
             )
             .where(User.email == normalized_email)
@@ -137,6 +155,9 @@ class UserService:
 
         access_token, refresh_token = self._issue_tokens(user.id, user.email)
         await self._persist_session(db, user.id, refresh_token)
+
+        if ENVIRONMENT == "prod":
+            send_welcome_mail(to_mail=normalized_email, name=user.full_name)
 
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,

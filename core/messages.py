@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 USER_MESSAGES = SimpleNamespace(
     # Success
-    OTP_SENT="An OTP was sent to your email.",
+    OTP_SENT="Please check your mail or spam for an OTP.",
     ACCOUNT_CREATED="Account created successfully.",
     LOGIN_SUCCESS="Login successful.",
     LOGOUT_SUCCESS="Logged out successfully.",

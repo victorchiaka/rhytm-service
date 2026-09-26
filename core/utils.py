@@ -1,3 +1,15 @@
+import os
+import smtplib
+from datetime import datetime, timezone
+from email.message import EmailMessage
+
+from dotenv import load_dotenv
+from fastapi.templating import Jinja2Templates
+
+load_dotenv()
+
+templates = Jinja2Templates(directory="core/templates")
+
 DAY_NAMES = {
     0: "SU",
     1: "M",
@@ -8,6 +20,11 @@ DAY_NAMES = {
     6: "S",
 }
 
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+MTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = os.getenv("SMTP_PORT")
+
 
 def fmt_days(day_ints: list[int]) -> str:
     """Convert a list of day integers to a readable string, e.g. 'M, W, F'."""
@@ -15,9 +32,9 @@ def fmt_days(day_ints: list[int]) -> str:
 
 
 PERIOD_BOUNDS = {
-    "Morning": (0, 660),      # 00:00 - 11:00
+    "Morning": (0, 660),  # 00:00 - 11:00
     "Afternoon": (720, 900),  # 12:00 - 15:00
-    "Evening": (960, 1260),   # 16:00 - 21:00
+    "Evening": (960, 1260),  # 16:00 - 21:00
 }
 
 
@@ -48,3 +65,43 @@ def check_reminder_before_routine(
         return True, start_mins - rem_mins, f"{rh:02d}:{rm:02d}"
 
     return False, 0, f"{rh:02d}:{rm:02d}"
+
+
+def send_email_otp(to_mail: str, name: str, otp: str, expiry_minutes: int = 10):
+    html = templates.get_template("otp_mail.html").render(
+        {
+            "otp": otp,
+            "name": name,
+            "expiry_minutes": expiry_minutes,
+            "year": datetime.now(timezone.utc).year,
+        }
+    )
+    msg = EmailMessage()
+    msg.set_content(f"Your otp is {otp}\n")
+    msg.add_alternative(html, subtype="html")
+    msg["Subject"] = "Verify your email"
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = to_mail
+
+    with smtplib.SMTP_SSL(str(MTP_HOST)) as smtp:
+        smtp.login(str(EMAIL_SENDER), str(EMAIL_PASSWORD))
+        smtp.send_message(msg)
+
+
+def send_welcome_mail(to_mail: str, name: str):
+    html = templates.get_template("welcome_mail.html").render(
+        {
+            "name": name,
+            "year": datetime.now(timezone.utc).year,
+        }
+    )
+    msg = EmailMessage()
+    msg.set_content(f"Welcome to Rhytm, {name}!\n")
+    msg.add_alternative(html, subtype="html")
+    msg["Subject"] = "Welcome to Rhytm"
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = to_mail
+
+    with smtplib.SMTP_SSL(str(MTP_HOST)) as smtp:
+        smtp.login(str(EMAIL_SENDER), str(EMAIL_PASSWORD))
+        smtp.send_message(msg)
