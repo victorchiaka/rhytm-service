@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your email</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f6f7fb;
+      font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #111827;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    table {
+      border-spacing: 0;
+    }
+
+    td {
+      padding: 0;
+    }
+
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f6f7fb;
+      padding: 56px 0;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .content {
+      padding: 40px 44px;
+    }
+
+    .brand-logo {
+      display: inline-block;
+      vertical-align: middle;
+      width: 26px;
+      height: 32px;
+      margin-right: 10px;
+    }
+
+    .brand-name {
+      display: inline-block;
+      vertical-align: middle;
+      font-size: 20px;
+      font-weight: 700;
+      color: #111827;
+      letter-spacing: -0.5px;
+    }
+
+    .heading {
+      font-size: 21px;
+      font-weight: 700;
+      color: #111827;
+      margin: 32px 0 12px;
+      letter-spacing: -0.3px;
+    }
+
+    .paragraph {
+      font-size: 15px;
+      line-height: 24px;
+      color: #4b5563;
+      margin: 0 0 18px;
+    }
+
+    .otp-wrapper {
+      margin: 28px 0;
+      text-align: center;
+    }
+
+    .otp-box {
+      display: inline-block;
+      background-color: #faf5ff;
+      border: 1px solid #e9d8fd;
+      border-radius: 10px;
+      padding: 16px 36px;
+      text-align: center;
+    }
+
+    .otp-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #7c3aed;
+      margin-bottom: 4px;
+    }
+
+    .otp-code {
+      font-family: 'Bricolage Grotesque', 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: #9567F0;
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    .expiry-note {
+      font-size: 14px;
+      color: #4b5563;
+      margin: 0 0 14px;
+    }
+
+    .security-note {
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 20px;
+      margin: 0;
+    }
+
+    .divider {
+      height: 1px;
+      background-color: #f1f2f6;
+      margin: 32px 0 20px;
+    }
+
+    .footer {
+      font-size: 12px;
+      color: #9ca3af;
+      line-height: 18px;
+      margin: 0;
+    }
+
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 28px 22px !important;
+      }
+
+      .card {
+        border-radius: 8px !important;
+      }
+
+      .otp-code {
+        font-size: 28px !important;
+        letter-spacing: 6px !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <center class="wrapper">
+    <table class="card" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        <td class="content">
+          <!-- Brand Header -->
+          <table cellpadding="0" cellspacing="0" role="presentation">
+            <tr>
+              <td style="vertical-align: middle;">
+                <span class="brand-name">Rhytm</span>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Content -->
+          <h1 class="heading">Verify your email address</h1>
+          <p class="paragraph">
+            Hi {{ name }},
+          </p>
+          <p class="paragraph">
+            Use the verification code below to confirm your email and complete your setup:
+          </p>
+
+          <!-- OTP Box -->
+          <div class="otp-wrapper">
+            <div class="otp-box">
+              <div class="otp-label">Verification Code</div>
+              <div class="otp-code">{{ otp }}</div>
+            </div>
+          </div>
+
+          <p class="expiry-note">
+            This code will expire in <strong>{{ expiry_minutes | default(10) }} minute{{ "s" if (expiry_minutes |
+              default(10)) != 1 else "" }}</strong>.
+          </p>
+          <p class="security-note">
+            If you did not initiate this request, you can safely disregard this email. Please do not share this code
+            with anyone.
+          </p>
+
+          <!-- Divider -->
+          <div class="divider"></div>
+
+          <!-- Footer -->
+          <p class="footer">
+            &copy; {{ year }} Rhytm. All rights reserved.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+
+</html>
