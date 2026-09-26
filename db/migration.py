@@ -4,6 +4,7 @@ import aiofiles
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from core.models.habit import Habit
 from core.models.routine import Routine
@@ -104,7 +105,9 @@ async def seed_habits(db: AsyncSession, file_path: str):
             continue
 
         result = await db.execute(
-            select(Habit).where(Habit.name == data["name"], Habit.user_id == user.id)
+            select(Habit)
+            .options(selectinload(Habit.routines))
+            .where(Habit.name == data["name"], Habit.user_id == user.id)
         )
         existing = result.scalar_one_or_none()
         if existing is None:
