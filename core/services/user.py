@@ -24,7 +24,7 @@ from core.security import (
     hash_token,
     verify_password,
 )
-from core.utils import send_email_otp, send_welcome_mail
+from core.utils import attach_activity, send_email_otp, send_welcome_mail
 
 load_dotenv()
 
@@ -142,10 +142,12 @@ class UserService:
         query = await db.execute(
             select(User)
             .options(
-                selectinload(
-                    User.routines.and_(Routine.deleted_at.is_(None))
-                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
-                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.routines.and_(Routine.deleted_at.is_(None)))
+                .selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
+                .selectinload(Habit.activity_logs),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                ),
             )
             .where(User.email == normalized_email)
         )
@@ -158,6 +160,10 @@ class UserService:
 
         if ENVIRONMENT == "prod":
             send_welcome_mail(to_mail=normalized_email, name=user.full_name)
+
+        attach_activity(list(user.habits), user.subscription_status)
+        for r in user.routines:
+            attach_activity(list(r.habits), user.subscription_status)
 
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,
@@ -172,10 +178,12 @@ class UserService:
         result = await db.execute(
             select(User)
             .options(
-                selectinload(
-                    User.routines.and_(Routine.deleted_at.is_(None))
-                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
-                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.routines.and_(Routine.deleted_at.is_(None)))
+                .selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
+                .selectinload(Habit.activity_logs),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                ),
             )
             .where(User.email == normalized_email)
         )
@@ -188,6 +196,10 @@ class UserService:
 
         access_token, refresh_token = self._issue_tokens(user.id, user.email)
         await self._persist_session(db, user.id, refresh_token)
+
+        attach_activity(list(user.habits), user.subscription_status)
+        for r in user.routines:
+            attach_activity(list(r.habits), user.subscription_status)
 
         return {
             "message": USER_MESSAGES.LOGIN_SUCCESS,
@@ -378,10 +390,12 @@ class UserService:
         result = await db.execute(
             select(User)
             .options(
-                selectinload(
-                    User.routines.and_(Routine.deleted_at.is_(None))
-                ).selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))),
-                selectinload(User.habits.and_(Habit.deleted_at.is_(None))),
+                selectinload(User.routines.and_(Routine.deleted_at.is_(None)))
+                .selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
+                .selectinload(Habit.activity_logs),
+                selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                ),
             )
             .where(User.id == user_id)
         )
@@ -391,6 +405,10 @@ class UserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=USER_MESSAGES.USER_NOT_FOUND,
             )
+        attach_activity(list(user.habits), user.subscription_status)
+        for r in user.routines:
+            attach_activity(list(r.habits), user.subscription_status)
+
         return UserResponse.model_validate(user).model_dump()
 
     async def delete_account(

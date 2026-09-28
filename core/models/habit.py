@@ -1,7 +1,6 @@
 import uuid
 
 from sqlalchemy import (
-    BigInteger,
     Column,
     Date,
     DateTime,
@@ -60,7 +59,7 @@ class Habit(Base):
 class ActivityLog(Base):
     __tablename__ = "activity_log"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     habit_id = Column(
         UUID(as_uuid=True), ForeignKey("habits.id", ondelete="CASCADE"), nullable=False
     )
