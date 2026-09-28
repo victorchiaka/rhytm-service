@@ -460,3 +460,48 @@ class HabitService:
             await db.commit()
 
         return {"message": "Check-in successful", "date": act_date.isoformat()}
+
+    async def undo_check_in(
+        self, habit_id: str, user_id: str, payload: CheckInRequest, db: AsyncSession
+    ) -> dict:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        habit_check = await db.execute(
+            select(Habit.id).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        if not habit_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        if payload.date:
+            try:
+                act_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            act_date = datetime.now(timezone.utc).date()
+
+        existing = await db.execute(
+            select(ActivityLog).where(
+                ActivityLog.habit_id == habit_uuid,
+                ActivityLog.activity_date == act_date,
+            )
+        )
+        existing_log = existing.scalars().first()
+        if existing_log:
+            await db.delete(existing_log)
+            await db.commit()
+
+        return {"message": "Undo check-in successful", "date": act_date.isoformat()}

@@ -136,6 +136,22 @@ async def check_in_habit(
     )
 
 
+@habits_router.delete(
+    "/{id}/checkin",
+    status_code=status.HTTP_200_OK,
+    description="Undo a single check-in for a habit",
+)
+async def undo_check_in_habit(
+    id: str,
+    payload: CheckInRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await habit_service.undo_check_in(
+        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db
+    )
+
+
 @habits_router.put(
     "/{id}",
     status_code=status.HTTP_200_OK,
