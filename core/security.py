@@ -83,10 +83,15 @@ async def get_current_user(
 
     user_id = payload["sub"]
     result = await db.execute(select(User).where(User.id == user_id))
-    if not result.scalar_one_or_none():
+    user = result.scalar_one_or_none()
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=USER_MESSAGES.SESSION_EXPIRED,
         )
 
-    return {"user_id": user_id, "access_token": credentials.credentials}
+    return {
+        "user_id": user_id,
+        "access_token": credentials.credentials,
+        "subscription_status": user.subscription_status,
+    }

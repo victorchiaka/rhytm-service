@@ -2,9 +2,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.schemas.habit import (
+    ActivityLogResponse,
+    CheckInRequest,
     CreateHabitRequest,
     DeleteHabitResponse,
     HabitResponse,
+    SyncActivityRequest,
+    SyncActivityResponse,
     UpdateHabitRequest,
 )
 from core.security import get_current_user
@@ -31,6 +35,7 @@ async def create_habit(
 ) -> HabitResponse:
     return await habit_service.create_habit(
         user_id=current_user["user_id"],
+        subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
     )
@@ -40,7 +45,11 @@ async def create_habit(
 async def get_all(
     current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    return await habit_service.get_all(user_id=current_user["user_id"], db=db)
+    return await habit_service.get_all(
+        user_id=current_user["user_id"],
+        subscription_status=current_user["subscription_status"],
+        db=db,
+    )
 
 
 @habits_router.get(
@@ -52,7 +61,25 @@ async def get_today_habits(
     db: AsyncSession = Depends(get_db),
 ) -> list[HabitResponse]:
     return await habit_service.get_by_day(
-        user_id=current_user["user_id"], day_digit=day, db=db
+        user_id=current_user["user_id"],
+        day_digit=day,
+        subscription_status=current_user["subscription_status"],
+        db=db,
+    )
+
+
+@habits_router.post(
+    "/sync-activity",
+    status_code=status.HTTP_200_OK,
+    description="Bulk sync activity items from local cache",
+)
+async def sync_activity(
+    payload: SyncActivityRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SyncActivityResponse:
+    return await habit_service.sync_activity(
+        user_id=current_user["user_id"], payload=payload, db=db
     )
 
 
@@ -65,7 +92,63 @@ async def get_habit(
     db: AsyncSession = Depends(get_db),
 ) -> HabitResponse:
     return await habit_service.get_habit(
-        user_id=current_user["user_id"], habit_id=id, db=db
+        user_id=current_user["user_id"],
+        habit_id=id,
+        subscription_status=current_user["subscription_status"],
+        db=db,
+    )
+
+
+@habits_router.get(
+    "/{id}/activity",
+    status_code=status.HTTP_200_OK,
+    description="Fetches habit activity log in a dense week format",
+)
+async def get_habit_activity(
+    id: str,
+    scope: str,
+    date: str | None = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ActivityLogResponse:
+    return await habit_service.get_activity_log(
+        habit_id=id,
+        user_id=current_user["user_id"],
+        scope=scope,
+        target_date=date,
+        db=db,
+    )
+
+
+@habits_router.post(
+    "/{id}/checkin",
+    status_code=status.HTTP_200_OK,
+    description="Record a single check-in for a habit",
+)
+async def check_in_habit(
+    id: str,
+    payload: CheckInRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await habit_service.check_in(
+        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db
+    )
+
+
+@habits_router.delete(
+    "/{id}/checkin",
+    status_code=status.HTTP_200_OK,
+    description="Undo a single check-in for a habit",
+)
+async def undo_check_in_habit(
+    id: str,
+    payload: CheckInRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await habit_service.undo_check_in(
+        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db
     )
 
 
@@ -87,6 +170,7 @@ async def update_habit(
     return await habit_service.update_habit(
         habit_id=id,
         user_id=current_user["user_id"],
+        subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
     )

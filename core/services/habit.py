@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -6,15 +7,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.messages import HABIT_MESSAGES, ROUTINE_MESSAGES
-from core.models.habit import Habit
+from core.models.habit import ActivityLog, Habit
 from core.models.routine import Routine
 from core.schemas.habit import (
+    ActivityLogResponse,
+    CheckInRequest,
     CreateHabitRequest,
     DeleteHabitResponse,
     HabitResponse,
+    SyncActionEnum,
+    SyncActivityRequest,
+    SyncActivityResponse,
     UpdateHabitRequest,
 )
-from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
+from core.utils import (
+    attach_activity,
+    check_reminder_before_routine,
+    fmt_days,
+    is_time_in_period,
+)
 
 
 class HabitService:
@@ -123,7 +134,11 @@ class HabitService:
                 period_days_map[day] = routine.name
 
     async def create_habit(
-        self, user_id: str, payload: CreateHabitRequest, db: AsyncSession
+        self,
+        user_id: str,
+        subscription_status: str,
+        payload: CreateHabitRequest,
+        db: AsyncSession,
     ) -> HabitResponse:
         habit_days = sorted(set(payload.days_of_week))
         await self._check_reminder_conflict(
@@ -137,18 +152,24 @@ class HabitService:
         )
         db.add(new_habit)
         await db.commit()
-        await db.refresh(new_habit)
-        return HabitResponse.model_validate(new_habit)
+        await db.refresh(new_habit, ["activity_logs"])
+        habit = HabitResponse.model_validate(new_habit)
+        attach_activity([habit], subscription_status)
+        return habit
 
-    async def get_all(self, user_id: str, db: AsyncSession) -> list[HabitResponse]:
+    async def get_all(
+        self, user_id: str, subscription_status: str, db: AsyncSession
+    ) -> list[HabitResponse]:
         result = await db.execute(
-            select(Habit).where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
+            select(Habit)
+            .options(selectinload(Habit.activity_logs))
+            .where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
         )
-        habits = result.scalars().all()
-        return [HabitResponse.model_validate(h) for h in habits]
+        habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
+        return attach_activity(habits, subscription_status)
 
     async def get_by_day(
-        self, user_id: str, day_digit: int, db: AsyncSession
+        self, user_id: str, day_digit: int, subscription_status: str, db: AsyncSession
     ) -> list[HabitResponse]:
         if day_digit not in range(7):
             raise HTTPException(
@@ -156,17 +177,19 @@ class HabitService:
                 detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
             )
         result = await db.execute(
-            select(Habit).where(
+            select(Habit)
+            .options(selectinload(Habit.activity_logs))
+            .where(
                 Habit.user_id == user_id,
                 Habit.days_of_week.contains([day_digit]),
                 Habit.deleted_at.is_(None),
             )
         )
-        habits = result.scalars().all()
-        return [HabitResponse.model_validate(h) for h in habits]
+        habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
+        return attach_activity(habits, subscription_status)
 
     async def get_habit(
-        self, user_id: str, habit_id: str, db: AsyncSession
+        self, user_id: str, habit_id: str, subscription_status: str, db: AsyncSession
     ) -> HabitResponse:
         try:
             habit_uuid = UUID(habit_id)
@@ -176,7 +199,9 @@ class HabitService:
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
         result = await db.execute(
-            select(Habit).where(
+            select(Habit)
+            .options(selectinload(Habit.activity_logs))
+            .where(
                 Habit.id == habit_uuid,
                 Habit.user_id == user_id,
                 Habit.deleted_at.is_(None),
@@ -188,12 +213,15 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
-        return HabitResponse.model_validate(habit)
+        habit_resp = HabitResponse.model_validate(habit)
+        attach_activity([habit_resp], subscription_status)
+        return habit_resp
 
     async def update_habit(
         self,
         habit_id: str,
         user_id: str,
+        subscription_status: str,
         payload: UpdateHabitRequest,
         db: AsyncSession,
     ) -> HabitResponse:
@@ -207,7 +235,7 @@ class HabitService:
             )
         result = await db.execute(
             select(Habit)
-            .options(selectinload(Habit.routines))
+            .options(selectinload(Habit.routines), selectinload(Habit.activity_logs))
             .where(
                 Habit.id == habit_uuid,
                 Habit.user_id == user_id,
@@ -232,8 +260,10 @@ class HabitService:
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
         await db.commit()
-        await db.refresh(habit)
-        return HabitResponse.model_validate(habit)
+        await db.refresh(habit, ["activity_logs"])
+        habit_resp = HabitResponse.model_validate(habit)
+        attach_activity([habit_resp], subscription_status)
+        return habit_resp
 
     async def delete_habit(
         self, habit_id: str, user_id: str, db: AsyncSession
@@ -278,3 +308,200 @@ class HabitService:
                 else HABIT_MESSAGES.DELETED
             )
         )
+
+    async def get_activity_log(
+        self,
+        habit_id: str,
+        user_id: str,
+        scope: str,
+        target_date: str | None,
+        db: AsyncSession,
+    ) -> ActivityLogResponse:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        habit_check = await db.execute(
+            select(Habit.id).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        if not habit_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        if target_date:
+            try:
+                base_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            base_date = datetime.now(timezone.utc).date()
+
+        from core.utils import generate_activity_grid
+
+        scope = scope.upper()
+        if scope not in ("MONTH", "YEAR"):
+            raise HTTPException(status_code=400, detail="Scope must be MONTH or YEAR")
+
+        base_date = base_date or datetime.now(timezone.utc).date()
+        if scope == "MONTH":
+            from_date = base_date.replace(day=1)
+            next_month = from_date.replace(day=28) + timedelta(days=4)
+            to_date = next_month - timedelta(days=next_month.day)
+        else:
+            from_date = base_date.replace(month=1, day=1)
+            to_date = base_date.replace(month=12, day=31)
+
+        activity_query = await db.execute(
+            select(ActivityLog.activity_date).where(
+                ActivityLog.habit_id == habit_uuid,
+                ActivityLog.activity_date >= from_date,
+                ActivityLog.activity_date <= to_date,
+            )
+        )
+        activity_dates = {row for row in activity_query.scalars().all()}
+
+        grid_data = generate_activity_grid(habit_uuid, activity_dates, scope)
+        return ActivityLogResponse(**grid_data)
+
+    async def sync_activity(
+        self, user_id: str, payload: SyncActivityRequest, db: AsyncSession
+    ) -> SyncActivityResponse:
+        habit_ids = list({a.habit_id for a in payload.activities})
+        if not habit_ids:
+            return SyncActivityResponse(message="Nothing to sync", processed=0)
+
+        habit_check = await db.execute(
+            select(Habit.id).where(Habit.id.in_(habit_ids), Habit.user_id == user_id)
+        )
+        valid_habit_ids = {h for h in habit_check.scalars().all()}
+
+        processed = 0
+        for activity in payload.activities:
+            if activity.habit_id not in valid_habit_ids:
+                continue
+
+            try:
+                act_date = datetime.strptime(activity.date, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+
+            existing = await db.execute(
+                select(ActivityLog).where(
+                    ActivityLog.habit_id == activity.habit_id,
+                    ActivityLog.activity_date == act_date,
+                )
+            )
+            existing_log = existing.scalars().first()
+
+            if activity.action == SyncActionEnum.CHECK_IN:
+                if not existing_log:
+                    db.add(
+                        ActivityLog(habit_id=activity.habit_id, activity_date=act_date)
+                    )
+                    processed += 1
+            elif activity.action == SyncActionEnum.UNDO_CHECK_IN:
+                if existing_log:
+                    await db.delete(existing_log)
+                    processed += 1
+
+        await db.commit()
+        return SyncActivityResponse(message="Sync successful", processed=processed)
+
+    async def check_in(
+        self, habit_id: str, user_id: str, payload: CheckInRequest, db: AsyncSession
+    ) -> dict:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        habit_check = await db.execute(
+            select(Habit.id).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        if not habit_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        if payload.date:
+            try:
+                act_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            act_date = datetime.now(timezone.utc).date()
+
+        existing = await db.execute(
+            select(ActivityLog).where(
+                ActivityLog.habit_id == habit_uuid,
+                ActivityLog.activity_date == act_date,
+            )
+        )
+        if not existing.scalars().first():
+            db.add(ActivityLog(habit_id=habit_uuid, activity_date=act_date))
+            await db.commit()
+
+        return {"message": "Check-in successful", "date": act_date.isoformat()}
+
+    async def undo_check_in(
+        self, habit_id: str, user_id: str, payload: CheckInRequest, db: AsyncSession
+    ) -> dict:
+        try:
+            habit_uuid = UUID(habit_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        habit_check = await db.execute(
+            select(Habit.id).where(
+                Habit.id == habit_uuid,
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
+            )
+        )
+        if not habit_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
+            )
+
+        if payload.date:
+            try:
+                act_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+                )
+        else:
+            act_date = datetime.now(timezone.utc).date()
+
+        existing = await db.execute(
+            select(ActivityLog).where(
+                ActivityLog.habit_id == habit_uuid,
+                ActivityLog.activity_date == act_date,
+            )
+        )
+        existing_log = existing.scalars().first()
+        if existing_log:
+            await db.delete(existing_log)
+            await db.commit()
+
+        return {"message": "Undo check-in successful", "date": act_date.isoformat()}

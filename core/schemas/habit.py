@@ -1,8 +1,9 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreateHabitInput(BaseModel):
@@ -35,11 +36,23 @@ class UpdateHabitRequest(CreateHabitInput):
     pass
 
 
+class HabitActivityLogShape(BaseModel):
+    id: UUID
+    habit_id: UUID
+    activity_date: date
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class HabitShape(BaseModel):
     id: UUID
     name: str
     reminder_time: str | None = None
     days_of_week: list[int]
+    activity_logs: list[HabitActivityLogShape] = Field(default=[], exclude=True)
+    activity: "ActivityLogResponse | None" = None
     created_at: datetime
     updated_at: datetime
 
@@ -53,3 +66,44 @@ class HabitResponse(HabitShape):
 
 class DeleteHabitResponse(BaseModel):
     message: str
+
+
+class ActivityWeek(BaseModel):
+    week: int
+    days: list[int]
+    total: int
+
+
+class ActivityLogResponse(BaseModel):
+    habit_id: UUID
+    scope: str
+    from_: str = Field(alias="from")
+    to: str
+    weeks: list[ActivityWeek]
+
+    class Config:
+        populate_by_name = True
+
+
+class SyncActionEnum(str, Enum):
+    CHECK_IN = "CHECK_IN"
+    UNDO_CHECK_IN = "UNDO_CHECK_IN"
+
+
+class SyncActivityItem(BaseModel):
+    habit_id: UUID
+    date: str  # YYYY-MM-DD
+    action: SyncActionEnum
+
+
+class SyncActivityRequest(BaseModel):
+    activities: list[SyncActivityItem]
+
+
+class SyncActivityResponse(BaseModel):
+    message: str
+    processed: int
+
+
+class CheckInRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD. Defaults to today if not provided.
