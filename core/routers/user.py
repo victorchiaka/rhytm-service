@@ -125,3 +125,31 @@ async def delete_account(
         db=db,
         rdb=rdb,
     )
+
+
+@users_router.post("/export/generate", status_code=status.HTTP_202_ACCEPTED)
+async def generate_export(
+    format: str,  # "pdf" or "excel"
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    rdb: Redis = Depends(get_rdb),
+):
+    return await user_service.generate_export(
+        user_id=current_user["user_id"],
+        format=format,
+        db=db,
+        rdb=rdb,
+    )
+
+
+@users_router.get("/export/download/{job_id}", status_code=status.HTTP_200_OK)
+async def download_export(
+    job_id: str,
+    current_user: dict = Depends(get_current_user),
+    rdb: Redis = Depends(get_rdb),
+):
+    return await user_service.download_export(
+        user_id=current_user["user_id"],
+        job_id=job_id,
+        rdb=rdb,
+    )

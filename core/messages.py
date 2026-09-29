@@ -17,6 +17,11 @@ USER_MESSAGES = SimpleNamespace(
     UNAUTHORIZED="Authentication required.",
     INVALID_TOKEN="Invalid or expired token.",
     SESSION_EXPIRED="Session expired or invalid.",
+    USER_NOT_PRO="Upgrade to pro to use this feature.",
+    INVALID_EXPORT_FORMAT="Format must be PDF or Excel",
+    EXPORT_NOT_FOUND="Export not found or expired window",
+    EXPORT_GENERATION_FAILED="Failed to generate export",
+    EXPORT_STILL_PROCESSING="Still processing export",
 )
 
 ROUTINE_MESSAGES = SimpleNamespace(
