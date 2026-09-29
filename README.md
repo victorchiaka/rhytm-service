@@ -30,6 +30,11 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 
 ---
 
+## Subscriptions & Benefits (Implemented)
+- **`POST /subscriptions/benefits`** — Add/update paywall feature entries (e.g. feature name, basic value, pro value). 
+*(Moved to top as this is fully implemented and manages our core dynamic paywall features).*
+
+---
 
 ## 1. User Model (`users`)
 
@@ -39,8 +44,8 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 - **Data Export (Pro)**
   - `GET /users/export/excel` - Generate an Excel file containing all routines, habits, and activity logs.
   - `GET /users/export/pdf` - Generate a visually appealing PDF report of user consistency and improvements with a custom watermark/logo.
-- **Global Aggregates**
-  - `GET /users/insights/summary` - Returns an aggregate of user performance across all routines and habits (e.g., overall consistency score, total days active).
+
+*(Note: Global insights have been shifted to the next version. We are currently focusing on Data Export and AI integration).*
 
 ---
 
@@ -48,10 +53,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 
 **Core Responsibility:** Grouping habits by specific times of day (e.g., "Morning Workflow", "Evening Wind Down").
 
-### Features & Endpoints
-- **Routine Analytics**
-  - `GET /routines/{id}/completion-rate` - Calculate the completion percentage of all habits within this routine for a given date range.
-  - `GET /routines/insights` - List all routines ordered by their consistency scores (which routines is the user best/worst at?).
+*(Note: Routine completion rates and insights have been shifted to the next version).*
 
 ---
 
@@ -59,13 +61,7 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 
 **Core Responsibility:** Individual actionable items that need to be tracked, linked to routines.
 
-### Features & Endpoints
-- **Push Notifications**
-  - `POST /habits/sync-reminders` - Sync `reminder_time` and `days_of_week` with a Firebase Cloud Messaging worker to push notifications dynamically.
-- **Performance & Improvement Calculations**
-  - `GET /habits/{id}/streak` - Calculate the current and longest continuous streak based on `ActivityLog`.
-  - `GET /habits/{id}/consistency` - Calculate consistency percentage over the last 30/60/90 days.
-  - `GET /habits/{id}/improvement` - Compare the consistency of the current month vs. the previous month (e.g., "You are 15% more consistent this month").
+*(Note: Streaks, consistency, and improvement calculations are slated for the next version).*
 
 ---
 
@@ -73,17 +69,31 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 
 **Core Responsibility:** Immutable ledger of when habits were completed.
 
+*(Note: Basic activity logging via `/sync-activity` is complete and handles check-ins/undos natively).*
+
 ### Features & Endpoints
-- **Tracking**
-  - `POST /activity/log` - Mark a habit as completed for a specific `activity_date`.
-  - `DELETE /activity/log` - Undo a completion (un-mark a habit).
 - **Aggregates (Data for the Frontend)**
   - `GET /activity/calendar` - Fetch a heat-map array (like GitHub contributions) for the current month to show days where all/most habits were completed.
 
-## 5. Upcoming Advanced Features (Backlog)
+---
+
+## 5. Next Version Features (v2.0)
+
+**Global Insights & Analytics**
+- **Global Aggregates**: `GET /users/insights/summary` - Aggregate of user performance.
+- **Completion Rate**: `GET /routines/{id}/completion-rate` 
+- **Routine Insights**: `GET /routines/insights`
+
+**Advanced Habit Features & Notifications**
+- **Advanced Push Notifications**: `POST /habits/sync-reminders` (Primary reminders will be handled locally by the OS scheduler (iOS/Android). Firebase Cloud Messaging is kept here strictly for future advanced cloud-triggered scenarios).
+- **Streaks**: `GET /habits/{id}/streak`
+- **Consistency**: `GET /habits/{id}/consistency`
+- **Improvement**: `GET /habits/{id}/improvement`
+
+**Backlog / Future Enhancements**
 - **Health Integration**: Sync with Apple Health / Google Fit to automatically complete physical habits (e.g., Steps, Sleep).
-- **Advanced Gamification**: Badges, levels, and achievements based on long-term consistency (e.g., "100-Day Streak Club").
-- **Home Screen Widgets**: iOS/Android widget support to show daily progress at a glance without opening the app.
+- **Advanced Gamification**: Badges, levels, and achievements based on long-term consistency.
+- **Home Screen Widgets**: iOS/Android widget support to show daily progress.
 
 ---
 
@@ -92,31 +102,38 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 This phased approach allows for gradual feature rollout and justified price bumps as the product's value increases.
 
 ### **Phase 1: v1.0 - The Foundation & Insights (Current Focus)**
-- **Features**: Smart Habits, Routine organization, core Activity Logging, Streak/Consistency calculations, AI-Driven Suggestions, Push Notifications (Firebase), and Global User Aggregates.
+- **Features**: Smart Habits, Routine organization, core Activity Logging, AI Integration, Subscriptions, and Data Export (Excel/PDF).
 - **Pricing**:
   - Free Tier: Basic streak tracking, limited routines.
   - Premium Tier (Introductory): **$4.99 / month**
     - Unlimited routines.
-    - AI-Driven Suggestions & Advanced Insights.
+    - AI-Driven Suggestions & Data Exports.
 
 ### **Phase 2: v2.0 - Data & Ecosystem Update**
-- **Features**: Excel/PDF data exports with custom watermarks, Home Screen Widgets, Health Integration (Apple/Google), and Advanced Gamification.
+- **Features**: Global Insights, Streaks & Consistency calculations, Firebase Push Notifications (Advanced), Home Screen Widgets, Health Integration (Apple/Google), and Advanced Gamification.
 - **Pricing Action**: Price Bump!
   - Premium Tier increases to **$7.99 / month**.
-  - Justification: The app is now a complete automated life-management tool with comprehensive data export capabilities.
+  - Justification: The app is now a complete automated life-management tool.
 
 ---
 
-## Technical Debt & Immediate Tasks
-- [ ] Implement Firebase Push Notification worker.
+## Implementation Checklist (v1.0 Release)
+*These tasks must be completed before shipping the initial release.*
+
+- [x] Implement Smart Habits and Routine organization.
+- [x] Implement core Activity Logging, syncing, and check-ins/undos.
+- [x] Setup basic Subscriptions and Paywall Benefits.
+- [ ] Implement AI Integration and Suggestions.
+- [ ] Create PDF/Excel Data Export utilities.
 - [ ] Setup RevenueCat webhooks and validate premium status in middleware.
-- [ ] Create PDF/Excel generation utility functions.
-- [ ] Write complex SQL queries / SQLAlchemy expressions for consistency calculations.
 
----
+### Next Version (v2.0) Checklist
+*These tasks are reserved for the next major update.*
 
-## 6. Subscriptions (Future / Admin Portal)
-
-- **`POST /subscriptions/benefits`** — Add/update paywall feature entries (e.g. feature name, basic value, pro value).
-  Requires a private admin portal (owner-only). Do NOT expose publicly. This will replace the current hardcoded seed in `populate_benefits()`.
-  The portal will be a separate internal tool — implement when the admin dashboard is ready.
+- [ ] Global Insights & Aggregates.
+- [ ] Routine Analytics (Completion Rate & Insights).
+- [ ] Streaks, Consistency, and Improvement calculations.
+- [ ] Firebase Push Notifications for cloud-triggered scenarios.
+- [ ] Health Integration (Apple/Google).
+- [ ] Advanced Gamification.
+- [ ] Home Screen Widgets.

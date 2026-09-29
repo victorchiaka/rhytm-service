@@ -1,19 +1,25 @@
+import asyncio
+import io
 import json
 import logging
 import os
 import secrets
-from datetime import UTC, datetime
+import uuid
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 import jwt
 from dotenv import load_dotenv
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
+from fpdf import FPDF
+from openpyxl import Workbook
 from redis.asyncio import Redis
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.messages import USER_MESSAGES
-from core.models.habit import Habit
+from core.models.habit import ActivityLog, Habit
 from core.models.routine import Routine
 from core.models.user import Session, User
 from core.schemas.user import UserResponse
@@ -25,6 +31,7 @@ from core.security import (
     verify_password,
 )
 from core.utils import attach_activity, send_email_otp, send_welcome_mail
+from db.database import AsyncSessionLocal
 
 load_dotenv()
 
@@ -34,6 +41,42 @@ SIGNUP_OTP_EXPIRY_SECONDS = 600
 RESET_PASSWORD_OTP_EXPIRY_SECONDS = 600
 
 ENVIRONMENT = str(os.getenv("ENVIRONMENT"))
+
+_MOCK_ROUTINE_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+_MOCK_HABIT_1_ID = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+_MOCK_HABIT_2_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+MOCK_EXPORT_DATA = {
+    "routines": [
+        SimpleNamespace(
+            id=_MOCK_ROUTINE_ID,
+            name="Morning Warmup",
+            period_of_day="Morning",
+            time_of_day="07:00",
+        )
+    ],
+    "habits": [
+        SimpleNamespace(
+            id=_MOCK_HABIT_1_ID,
+            name="Drink Water",
+            reminder_time="07:15",
+            routine_id=_MOCK_ROUTINE_ID,
+        ),
+        SimpleNamespace(
+            id=_MOCK_HABIT_2_ID,
+            name="Journal",
+            reminder_time="08:00",
+            routine_id=None,
+        ),
+    ],
+    "logs": [
+        SimpleNamespace(habit_id=_MOCK_HABIT_1_ID, activity_date=date(2026, 9, 25)),
+        SimpleNamespace(habit_id=_MOCK_HABIT_1_ID, activity_date=date(2026, 9, 26)),
+        SimpleNamespace(habit_id=_MOCK_HABIT_2_ID, activity_date=date(2026, 9, 26)),
+        SimpleNamespace(habit_id=_MOCK_HABIT_1_ID, activity_date=date(2026, 9, 27)),
+        SimpleNamespace(habit_id=_MOCK_HABIT_2_ID, activity_date=date(2026, 9, 28)),
+    ],
+}
 
 
 class UserService:
@@ -58,6 +101,186 @@ class UserService:
         )
         db.add(session_entry)
         await db.commit()
+
+    @staticmethod
+    async def _generate_excel_bytes(
+        user: User, routines: Routine, habits: Habit, logs: ActivityLog
+    ):
+        wb = Workbook()
+
+        ws_profile = wb.active
+        ws_profile.title = "Profile summary"
+        ws_profile.append(["Name", user.full_name])
+        ws_profile.append(["Email", user.email])
+        ws_profile.append(["Subscription", user.subscription_status])
+        ws_profile.append(["Member since", user.created_at.strftime("%Y-%m-%d")])
+
+        ws_routines = wb.create_sheet("Routines")
+        ws_routines.append(["Routine name", "Habit", "Remminder"])
+        for r in routines:
+            for h in habits:
+                if h.routine_id == r.id:
+                    ws_routines.append([r.name, h.name, str(h.reminder_time or "None")])
+
+        ws_habits = wb.create_sheet("Standalone Habits")
+        ws_habits.append(["Habit name", "Reminder"])
+        for h in habits:
+            if not h.routine_id:
+                ws_habits.append([h.name, str(h.reminder_time or "None")])
+
+        ws_logs = wb.create_sheet("Activity History")
+        ws_logs.append(["Date", "Habit name"])
+        habit_map = {h.id: h.name for h in habits}
+        for log in logs:
+            ws_logs.append(
+                [
+                    log.activity_date.strftime("%Y-%m-%d"),
+                    habit_map.get(log.habit_id, "Unknown"),
+                ]
+            )
+
+        out = io.BytesIO()
+        wb.save(out)
+        return out.getvalue()
+
+    @staticmethod
+    async def _generate_pdf_bytes(user: User, routines: list[Routine], habits: list[Habit], logs: list[ActivityLog]):
+        pdf = FPDF()
+
+        pdf.add_page()
+        pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(200, 10, text="Rhytm Performance Export", ln=True, align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, text=f"Name: {user.full_name}", ln=True)
+        pdf.cell(200, 10, text=f"Email: {user.email}", ln=True)
+        pdf.cell(200, 10, text=f"Subscription: {user.subscription_status}", ln=True)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", style="B", size=14)
+        pdf.cell(200, 10, text="Routines:", ln=True)
+        pdf.set_font("Arial", size=12)
+        for r in routines:
+            pdf.cell(200, 10, text=f"  {r.name} ({r.period_of_day}, {r.time_of_day})", ln=True)
+            for h in habits:
+                if h.routine_id == r.id:
+                    pdf.cell(200, 10, text=f"    - {h.name} (Reminder: {h.reminder_time or 'None'})", ln=True)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", style="B", size=14)
+        pdf.cell(200, 10, text="Standalone Habits:", ln=True)
+        pdf.set_font("Arial", size=12)
+        for h in habits:
+            if not h.routine_id:
+                pdf.cell(200, 10, text=f"- {h.name} (Reminder: {h.reminder_time or 'None'})", ln=True)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", style="B", size=14)
+        pdf.cell(200, 10, text=f"Total Lifetime Check-ins: {len(logs)}", ln=True)
+        pdf.set_font("Arial", size=12)
+        habit_map = {h.id: h.name for h in habits}
+        for log in logs:
+            pdf.cell(
+                200,
+                10,
+                text=f"{log.activity_date}: {habit_map.get(log.habit_id, 'Unknown')}",
+                ln=True,
+            )
+        return pdf.output()
+
+    @staticmethod
+    async def _process_export_task(
+        user_id: str, job_id: str, format: str, meta_key: str, rdb: Redis
+    ):
+        file_key = f"export_file:{user_id}:{job_id}"
+        try:
+            async with AsyncSessionLocal() as bg_db:
+                user = (
+                    await bg_db.execute(select(User).where(User.id == user_id))
+                ).scalar_one()
+
+                if ENVIRONMENT == "development":
+                    routines = MOCK_EXPORT_DATA["routines"]
+                    habits = MOCK_EXPORT_DATA["habits"]
+                    logs = MOCK_EXPORT_DATA["logs"]
+                else:
+                    routines = (
+                        await bg_db.execute(
+                            select(Routine).where(Routine.user_id == user_id)
+                        )
+                    ).scalars().all()
+                    habits = (
+                        await bg_db.execute(select(Habit).where(Habit.user_id == user_id))
+                    ).scalars().all()
+                    logs = (
+                        await bg_db.execute(
+                            select(ActivityLog)
+                            .join(Habit)
+                            .where(Habit.user_id == user_id)
+                        )
+                    ).scalars().all()
+
+            if format == "excel":
+                file_bytes = await UserService._generate_excel_bytes(
+                    user, routines, habits, logs
+                )
+                filename = f"rhytm_export_{datetime.now(UTC).date()}.xlsx"
+            else:
+                file_bytes = await UserService._generate_pdf_bytes(user, routines, habits, logs)
+                filename = f"rhytm_export_{datetime.now(UTC).date()}.pdf"
+            await rdb.setex(name=file_key, time=300, value=file_bytes)
+            await rdb.setex(
+                name=meta_key,
+                time=300,
+                value=json.dumps(
+                    {"status": "ready", "filename": filename, "format": format}
+                ),
+            )
+        except Exception as e:
+            logger.exception(f"Failed to generate {format} export for {user_id}")
+            await rdb.setex(
+                name=meta_key,
+                time=300,
+                value=json.dumps({"status": "failed", "error": str(e)}),
+            )
+
+    async def download_export(
+        self, user_id: uuid.UUID, job_id: str, rdb: Redis
+    ) -> dict:
+        meta_key = f"export_meta:{user_id}:{job_id}"
+        file_key = f"export_file:{user_id}:{job_id}"
+
+        raw_meta_data = await rdb.get(meta_key)
+        if not raw_meta_data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_MESSAGES.EXPORT_NOT_FOUND)
+
+        meta_data = json.loads(raw_meta_data)
+        if meta_data.get("status") == "failed":
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=USER_MESSAGES.EXPORT_GENERATION_FAILED)
+
+        if meta_data.get("status") == "processing":
+            raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail=USER_MESSAGES.EXPORT_STILL_PROCESSING)
+
+        file_bytes = await rdb.get(file_key)
+        if not file_bytes:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_MESSAGES.EXPORT_NOT_FOUND)
+
+        await rdb.delete(meta_key)
+        await rdb.delete(file_key)
+
+        content_type = {
+            "application/pdf" if meta_data.get("format") == "pdf" 
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+
+        return Response(
+            content=file_bytes,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={meta_data.get('filename')}"
+            },
+        )
 
     async def initiate_signup(
         self, email: str, full_name: str, db: AsyncSession, rdb: Redis
@@ -437,3 +660,40 @@ class UserService:
                 )
         except jwt.PyJWTError:
             pass
+
+    async def generate_export(
+        self,
+        user_id: str,
+        format: str,
+        db: AsyncSession,
+        rdb: Redis,
+    ):
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=USER_MESSAGES.USER_NOT_FOUND,
+            )
+        if user.subscription_status == "basic":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=USER_MESSAGES.USER_NOT_PRO
+            )
+        if format not in ["pdf", "excel"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=USER_MESSAGES.INVALID_EXPORT_FORMAT,
+            )
+        job_id = str(uuid.uuid4())
+        meta_key = f"export_meta:{user_id}:{job_id}"
+        await rdb.setex(
+            name=meta_key,
+            time=300,
+            value=json.dumps({"status": "processing", "format": format}),
+        )
+
+        asyncio.create_task(
+            UserService._process_export_task(user_id, job_id, format, meta_key, rdb)
+        )
+
+        return {"message": "Export generation started", "job_id": job_id, "status": "processing"}
