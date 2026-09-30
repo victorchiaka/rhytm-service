@@ -1,12 +1,14 @@
 import os
-import smtplib
 from datetime import date, datetime, timedelta, timezone
-from email.message import EmailMessage
 
+import resend
 from dotenv import load_dotenv
 from fastapi.templating import Jinja2Templates
 
 load_dotenv()
+
+resend.api_key = os.getenv("RESEND_API_KEY")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 
 templates = Jinja2Templates(directory="core/templates")
 
@@ -19,11 +21,6 @@ DAY_NAMES = {
     5: "F",
     6: "S",
 }
-
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-MTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = os.getenv("SMTP_PORT")
 
 
 def fmt_days(day_ints: list[int]) -> str:
@@ -76,16 +73,15 @@ def send_email_otp(to_mail: str, name: str, otp: str, expiry_minutes: int = 10):
             "year": datetime.now(timezone.utc).year,
         }
     )
-    msg = EmailMessage()
-    msg.set_content(f"Your otp is {otp}\n")
-    msg.add_alternative(html, subtype="html")
-    msg["Subject"] = "Verify your email"
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = to_mail
-
-    with smtplib.SMTP_SSL(str(MTP_HOST)) as smtp:
-        smtp.login(str(EMAIL_SENDER), str(EMAIL_PASSWORD))
-        smtp.send_message(msg)
+    resend.Emails.send(
+        {
+            "from": EMAIL_SENDER,
+            "to": to_mail,
+            "subject": "Verify your email",
+            "html": html,
+            "text": f"Your otp is {otp}\n",
+        }
+    )
 
 
 def send_welcome_mail(to_mail: str, name: str):
@@ -95,16 +91,15 @@ def send_welcome_mail(to_mail: str, name: str):
             "year": datetime.now(timezone.utc).year,
         }
     )
-    msg = EmailMessage()
-    msg.set_content(f"Welcome to Rhytm, {name}!\n")
-    msg.add_alternative(html, subtype="html")
-    msg["Subject"] = "Welcome to Rhytm"
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = to_mail
-
-    with smtplib.SMTP_SSL(str(MTP_HOST)) as smtp:
-        smtp.login(str(EMAIL_SENDER), str(EMAIL_PASSWORD))
-        smtp.send_message(msg)
+    resend.Emails.send(
+        {
+            "from": EMAIL_SENDER,
+            "to": to_mail,
+            "subject": "Welcome to Rhytm",
+            "html": html,
+            "text": f"Welcome to Rhytm, {name}!\n",
+        }
+    )
 
 
 def generate_activity_grid(

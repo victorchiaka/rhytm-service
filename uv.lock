@@ -1269,6 +1269,19 @@ wheels = [
 ]
 
 [[package]]
+name = "resend"
+version = "2.49.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/df/98f56b132586271436fb105c534f4674deb133b0fdc0055ee03cc327a616/resend-2.49.0.tar.gz", hash = "sha256:9ffbaccfd917e648b14a89f0f267aa4545b485ee51d0053872ebedcfa7da83d5", size = 63419, upload-time = "2026-09-29T18:55:22.941Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/e5/960e59811d6137531c6d1b640ee84efba61ac3e0789c62448ce13becad2e/resend-2.49.0-py2.py3-none-any.whl", hash = "sha256:b1bf6ab669e3b9268321a9999d23f20b6caced0b4184ff1f487e0fcb9e806860", size = 95884, upload-time = "2026-09-29T18:55:21.519Z" },
+]
+
+[[package]]
 name = "rhytm-service"
 version = "0.1.0"
 source = { virtual = "." }
@@ -1286,6 +1299,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-dotenv" },
     { name = "redis" },
+    { name = "resend" },
     { name = "sqlalchemy" },
     { name = "stripe" },
 ]
@@ -1305,6 +1319,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.13.0" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "redis" },
+    { name = "resend", specifier = ">=2.49.0" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
     { name = "stripe", specifier = ">=15.6.1" },
 ]
