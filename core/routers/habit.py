@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.schemas.habit import (
@@ -14,6 +15,7 @@ from core.schemas.habit import (
 from core.security import get_current_user
 from core.services.habit import HabitService
 from db.database import get_db
+from db.rdb import get_rdb
 
 habits_router = APIRouter(prefix="/habits", tags=["Habits"])
 
@@ -130,25 +132,33 @@ async def check_in_habit(
     payload: CheckInRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    rdb: Redis = Depends(get_rdb),
 ):
     return await habit_service.check_in(
-        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db
+        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db, rdb=rdb
     )
 
 
 @habits_router.delete(
     "/{id}/checkin",
     status_code=status.HTTP_200_OK,
-    description="Undo a single check-in for a habit",
+    description="Undo a single check-in for a habit within 5 minutes of check-in",
 )
 async def undo_check_in_habit(
     id: str,
     payload: CheckInRequest,
+    undo_token: str = Query(..., description="Undo token returned from habit check-in"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    rdb: Redis = Depends(get_rdb),
 ):
     return await habit_service.undo_check_in(
-        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db
+        habit_id=id,
+        user_id=current_user["user_id"],
+        payload=payload,
+        undo_token=undo_token,
+        db=db,
+        rdb=rdb,
     )
 
 

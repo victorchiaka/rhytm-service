@@ -60,6 +60,8 @@ HABIT_MESSAGES = SimpleNamespace(
     REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside '{routine_name}' ({period}).",
     REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than '{routine_name}' ({start}).",
     INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
+    UNDO_EXPIRED="Undo window has expired.",
+    INVALID_UNDO_TOKEN="Invalid or expired undo token.",
 )
 
 SUBSCRIPTION_MESSAGES = SimpleNamespace(

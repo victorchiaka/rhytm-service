@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from datetime import UTC, date, datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -391,7 +392,7 @@ class HabitService:
                 continue
 
             try:
-                act_date = datetime.strptime(activity.date, "%Y-%m-%d").date()
+                act_date = date.fromisoformat(activity.date)
             except ValueError:
                 continue
 
@@ -418,7 +419,12 @@ class HabitService:
         return SyncActivityResponse(message="Sync successful", processed=processed)
 
     async def check_in(
-        self, habit_id: str, user_id: str, payload: CheckInRequest, db: AsyncSession
+        self,
+        habit_id: str,
+        user_id: str,
+        payload: CheckInRequest,
+        db: AsyncSession,
+        rdb: Redis,
     ) -> dict:
         try:
             habit_uuid = UUID(habit_id)
@@ -441,13 +447,13 @@ class HabitService:
 
         if payload.date:
             try:
-                act_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
+                act_date = date.fromisoformat(payload.date)
             except ValueError:
                 raise HTTPException(
                     status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
                 )
         else:
-            act_date = datetime.now(timezone.utc).date()
+            act_date = datetime.now(UTC).date()
 
         existing = await db.execute(
             select(ActivityLog).where(
@@ -459,10 +465,25 @@ class HabitService:
             db.add(ActivityLog(habit_id=habit_uuid, activity_date=act_date))
             await db.commit()
 
-        return {"message": "Check-in successful", "date": act_date.isoformat()}
+        undo_token = str(uuid4())
+        cache_key = f"habit_undo:{user_id}:{habit_uuid}:{act_date.isoformat()}"
+        await rdb.set(cache_key, undo_token, ex=300)
+
+        return {
+            "message": "Check-in successful",
+            "date": act_date.isoformat(),
+            "undo_token": undo_token,
+            "undo_expires_in": 300,
+        }
 
     async def undo_check_in(
-        self, habit_id: str, user_id: str, payload: CheckInRequest, db: AsyncSession
+        self,
+        habit_id: str,
+        user_id: str,
+        payload: CheckInRequest,
+        undo_token: str,
+        db: AsyncSession,
+        rdb: Redis,
     ) -> dict:
         try:
             habit_uuid = UUID(habit_id)
@@ -485,13 +506,33 @@ class HabitService:
 
         if payload.date:
             try:
-                act_date = datetime.strptime(payload.date, "%Y-%m-%d").date()
+                act_date = date.fromisoformat(payload.date)
             except ValueError:
                 raise HTTPException(
                     status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
                 )
         else:
-            act_date = datetime.now(timezone.utc).date()
+            act_date = datetime.now(UTC).date()
+
+        cache_key = f"habit_undo:{user_id}:{habit_uuid}:{act_date.isoformat()}"
+        cached_token = await rdb.get(cache_key)
+
+        if not cached_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=HABIT_MESSAGES.UNDO_EXPIRED,
+            )
+
+        cached_token_str = (
+            cached_token.decode("utf-8")
+            if isinstance(cached_token, bytes)
+            else str(cached_token)
+        )
+        if cached_token_str != undo_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=HABIT_MESSAGES.INVALID_UNDO_TOKEN,
+            )
 
         existing = await db.execute(
             select(ActivityLog).where(
@@ -503,5 +544,7 @@ class HabitService:
         if existing_log:
             await db.delete(existing_log)
             await db.commit()
+
+        await rdb.delete(cache_key)
 
         return {"message": "Undo check-in successful", "date": act_date.isoformat()}
