@@ -30,12 +30,6 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8931 --workers 4
 
 ---
 
-## Subscriptions & Benefits (Implemented)
-- **`POST /subscriptions/benefits`** — Add/update paywall feature entries (e.g. feature name, basic value, pro value). 
-*(Moved to top as this is fully implemented and manages our core dynamic paywall features).*
-
----
-
 ## 1. User Model (`users`)
 
 **Core Responsibility:** Account management, authentication, subscriptions, and global user insights.
@@ -123,8 +117,8 @@ This phased approach allows for gradual feature rollout and justified price bump
 - [x] Implement Smart Habits and Routine organization.
 - [x] Implement core Activity Logging, syncing, and check-ins/undos.
 - [x] Setup basic Subscriptions and Paywall Benefits.
-- [ ] Implement AI Integration and Suggestions.
-- [ ] Create PDF/Excel Data Export utilities.
+- [x] Implement AI Integration and Suggestions.
+- [x] Create PDF/Excel Data Export utilities.
 - [ ] Setup RevenueCat webhooks and validate premium status in middleware.
 
 ### Next Version (v2.0) Checklist
@@ -137,3 +131,4 @@ This phased approach allows for gradual feature rollout and justified price bump
 - [ ] Health Integration (Apple/Google).
 - [ ] Advanced Gamification.
 - [ ] Home Screen Widgets.
+- [ ] Better visually appealing PDF report with a custom watermark/logo.
