@@ -70,3 +70,8 @@ SUBSCRIPTION_MESSAGES = SimpleNamespace(
     USER_NOT_FOUND="User not found.",
     INVALID_WEBHOOK_SIGNATURE="Invalid webhook signature.",
 )
+
+CHAT_MESSAGES = SimpleNamespace(
+    NOT_FOUND="Conversation not found.",
+    DELETED="Conversation deleted successfully.",
+)

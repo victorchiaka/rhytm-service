@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
+from core.models.chat import ChatMessage, Conversation
 from core.models.habit import Habit
 from core.models.routine import Routine
 from core.models.user import User

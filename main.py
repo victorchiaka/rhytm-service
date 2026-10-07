@@ -48,12 +48,14 @@ from fastapi import APIRouter, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from core.routers.chat import chat_router
 from core.routers.habit import habits_router
 from core.routers.routine import routines_router
 from core.routers.subscription import subscriptions_router
 from core.routers.user import auth_router, users_router
 
 api_router = APIRouter(prefix="/api")
+api_router.include_router(chat_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(habits_router)

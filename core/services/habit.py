@@ -261,7 +261,14 @@ class HabitService:
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
         await db.commit()
-        await db.refresh(habit, ["activity_logs"])
+        # Re-select: the update refreshes updated_at on the server, which a partial
+        # refresh() would leave expired and un-loadable outside a greenlet.
+        refreshed_result = await db.execute(
+            select(Habit)
+            .options(selectinload(Habit.activity_logs))
+            .where(Habit.id == habit_uuid)
+        )
+        habit = refreshed_result.scalar_one()
         habit_resp = HabitResponse.model_validate(habit)
         attach_activity([habit_resp], subscription_status)
         return habit_resp
