@@ -723,8 +723,10 @@ class UserService:
 
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
+            "tokens": {
+                "access": access_token,
+                "refresh": refresh_token,
+            },
             "user": UserResponse.model_validate(user).model_dump(),
         }
 
@@ -759,9 +761,11 @@ class UserService:
 
         return {
             "message": USER_MESSAGES.LOGIN_SUCCESS,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user": UserResponse.model_validate(user).model_dump(),
+            "tokens": {
+                "access": access_token,
+                "refresh": refresh_token,
+            },
+            "user": UserResponse.model_validate(user).model_dump()
         }
 
     async def request_password_reset(
@@ -938,8 +942,10 @@ class UserService:
 
         return {
             "message": USER_MESSAGES.TOKEN_REFRESH_SUCCESS,
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token,
+            "tokens": {
+                "access": new_access_token,
+                "refresh": new_refresh_token,
+            }
         }
 
     async def get_profile(self, user_id: str, db: AsyncSession) -> dict:
