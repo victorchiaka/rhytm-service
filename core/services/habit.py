@@ -175,11 +175,16 @@ class HabitService:
     async def get_all(
         self, user_id: str, subscription_status: str, db: AsyncSession
     ) -> list[HabitResponse]:
-        result = await db.execute(
+        query = (
             select(Habit)
             .options(selectinload(Habit.activity_logs))
             .where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
+            .order_by(Habit.created_at.desc())
         )
+        if subscription_status != "pro":
+            query = query.limit(2)
+
+        result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
         return attach_activity(habits, subscription_status)
 
@@ -191,7 +196,7 @@ class HabitService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
             )
-        result = await db.execute(
+        query = (
             select(Habit)
             .options(selectinload(Habit.activity_logs))
             .where(
@@ -199,7 +204,12 @@ class HabitService:
                 Habit.days_of_week.contains([day_digit]),
                 Habit.deleted_at.is_(None),
             )
+            .order_by(Habit.created_at.desc())
         )
+        if subscription_status != "pro":
+            query = query.limit(2)
+
+        result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
         return attach_activity(habits, subscription_status)
 
