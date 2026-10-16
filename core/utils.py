@@ -1,5 +1,5 @@
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import resend
 from dotenv import load_dotenv
@@ -70,7 +70,7 @@ def send_email_otp(to_mail: str, name: str, otp: str, expiry_minutes: int = 10):
             "otp": otp,
             "name": name,
             "expiry_minutes": expiry_minutes,
-            "year": datetime.now(timezone.utc).year,
+            "year": datetime.now(UTC).year,
         }
     )
     resend.Emails.send(
@@ -84,11 +84,33 @@ def send_email_otp(to_mail: str, name: str, otp: str, expiry_minutes: int = 10):
     )
 
 
+def send_reset_password_email(
+    to_mail: str, otp: str, expiry_minutes: int = 10, name: str | None = None
+):
+    html = templates.get_template("reset_password_mail.html").render(
+        {
+            "otp": otp,
+            "expiry_minutes": expiry_minutes,
+            "name": name,
+            "year": datetime.now(UTC).year,
+        }
+    )
+    resend.Emails.send(
+        {
+            "from": EMAIL_SENDER,
+            "to": to_mail,
+            "subject": "Reset your password",
+            "html": html,
+            "text": f"Your password reset code is {otp}\n",
+        }
+    )
+
+
 def send_welcome_mail(to_mail: str, name: str):
     html = templates.get_template("welcome_mail.html").render(
         {
             "name": name,
-            "year": datetime.now(timezone.utc).year,
+            "year": datetime.now(UTC).year,
         }
     )
     resend.Emails.send(
@@ -106,7 +128,7 @@ def generate_activity_grid(
     habit_id: str, activity_dates: set[date], scope: str = "MONTH"
 ) -> dict:
     """Generate a dense grid (ActivityLogResponse dict format) from raw dates."""
-    base_date = datetime.now(timezone.utc).date()
+    base_date = datetime.now(UTC).date()
     scope = scope.upper()
 
     if scope == "MONTH":
