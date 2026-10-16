@@ -95,3 +95,16 @@ async def get_current_user(
         "access_token": credentials.credentials,
         "subscription_status": user.subscription_status,
     }
+
+
+async def require_pro_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    from core.messages import USER_MESSAGES
+
+    if current_user.get("subscription_status") != "pro":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=USER_MESSAGES.USER_NOT_PRO,
+        )
+    return current_user

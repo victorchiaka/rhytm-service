@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -141,6 +141,20 @@ class HabitService:
         payload: CreateHabitRequest,
         db: AsyncSession,
     ) -> HabitResponse:
+        if subscription_status != "pro":
+            count_result = await db.execute(
+                select(func.count(Habit.id)).where(
+                    Habit.user_id == user_id,
+                    Habit.deleted_at.is_(None),
+                )
+            )
+            habit_count = count_result.scalar_one()
+            if habit_count >= 2:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=HABIT_MESSAGES.FREE_LIMIT_REACHED,
+                )
+
         habit_days = sorted(set(payload.days_of_week))
         await self._check_reminder_conflict(
             db, user_id, payload.reminder_time, habit_days

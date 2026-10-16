@@ -10,12 +10,16 @@ from core.schemas.routine import (
     UndoDeleteResponse,
     UpdateRoutineRequest,
 )
-from core.security import get_current_user
+from core.security import get_current_user, require_pro_user
 from core.services.routine import RoutineService
 from db.database import get_db
 from db.rdb import get_rdb
 
-routines_router = APIRouter(prefix="/routines", tags=["Routines"])
+routines_router = APIRouter(
+    prefix="/routines",
+    tags=["Routines"],
+    dependencies=[Depends(require_pro_user)],
+)
 
 routine_service = RoutineService()
 
@@ -78,8 +82,14 @@ async def check_routine_deletion(
 )
 async def confirm_routine_deletion(
     id: str,
-    mode: str = Query(default="routine_only", description="Deletion mode: 'routine_only' or 'exclusive'"),
-    token: str | None = Query(default=None, description="Redis deletion check token (required for exclusive mode)"),
+    mode: str = Query(
+        default="routine_only",
+        description="Deletion mode: 'routine_only' or 'exclusive'",
+    ),
+    token: str | None = Query(
+        default=None,
+        description="Redis deletion check token (required for exclusive mode)",
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),

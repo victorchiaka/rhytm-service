@@ -30,7 +30,12 @@ from core.security import (
     hash_token,
     verify_password,
 )
-from core.utils import attach_activity, send_email_otp, send_reset_password_email, send_welcome_mail
+from core.utils import (
+    attach_activity,
+    send_email_otp,
+    send_reset_password_email,
+    send_welcome_mail,
+)
 from db.database import AsyncSessionLocal
 
 load_dotenv()

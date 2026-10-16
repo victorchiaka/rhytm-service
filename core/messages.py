@@ -62,6 +62,7 @@ HABIT_MESSAGES = SimpleNamespace(
     INVALID_DAY_DIGIT="Day must be between 0 (Sunday) and 6 (Saturday).",
     UNDO_EXPIRED="Undo window has expired.",
     INVALID_UNDO_TOKEN="Invalid or expired undo token.",
+    FREE_LIMIT_REACHED="Upgrade to pro to create more habits.",
 )
 
 SUBSCRIPTION_MESSAGES = SimpleNamespace(
