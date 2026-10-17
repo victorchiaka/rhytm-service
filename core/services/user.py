@@ -30,7 +30,12 @@ from core.security import (
     hash_token,
     verify_password,
 )
-from core.utils import attach_activity, send_email_otp, send_welcome_mail
+from core.utils import (
+    attach_activity,
+    send_email_otp,
+    send_reset_password_email,
+    send_welcome_mail,
+)
 from db.database import AsyncSessionLocal
 
 load_dotenv()
@@ -717,7 +722,13 @@ class UserService:
         if ENVIRONMENT == "prod":
             send_welcome_mail(to_mail=normalized_email, name=user.full_name)
 
-        attach_activity(list(user.habits), user.subscription_status)
+        habits = list(user.habits)
+        if user.subscription_status != "pro":
+            habits.sort(key=lambda h: h.created_at, reverse=True)
+            habits = habits[:2]
+            user.habits = habits
+
+        attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
 
@@ -755,7 +766,13 @@ class UserService:
         access_token, refresh_token = self._issue_tokens(user.id, user.email)
         await self._persist_session(db, user.id, refresh_token)
 
-        attach_activity(list(user.habits), user.subscription_status)
+        habits = list(user.habits)
+        if user.subscription_status != "pro":
+            habits.sort(key=lambda h: h.created_at, reverse=True)
+            habits = habits[:2]
+            user.habits = habits
+
+        attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
 
@@ -780,7 +797,7 @@ class UserService:
                 detail=USER_MESSAGES.USER_NOT_FOUND,
             )
 
-        otp = f"{secrets.randbelow(10000):04d}"
+        otp = f"{secrets.randbelow(10000):04d}" if ENVIRONMENT == "prod" else "0000"
         redis_key = f"reset_password_otp:{normalized_email}"
         reset_data = {
             "email": normalized_email,
@@ -794,7 +811,19 @@ class UserService:
         # TODO: Set up email OTP sending service (SMTP / SendGrid / Resend / AWS SES)
         logger.info(f"[RESET PASSWORD OTP] OTP for {normalized_email} is: {otp}")
 
-        return {"message": USER_MESSAGES.OTP_SENT}
+        if ENVIRONMENT == "prod":
+            send_reset_password_email(
+                to_mail=normalized_email,
+                otp=otp,
+                expiry_minutes=RESET_PASSWORD_OTP_EXPIRY_SECONDS // 60,
+                name=user.full_name,
+            )
+        else:
+            logger.info(f"[RESET PASSWORD OTP] OTP for {normalized_email} is: {otp}")
+
+        message = USER_MESSAGES.OTP_SENT  if ENVIRONMENT == "prod" else "Dev otp is 0000"
+
+        return {"message": message}
 
     async def reset_password(
         self,
@@ -967,7 +996,13 @@ class UserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=USER_MESSAGES.USER_NOT_FOUND,
             )
-        attach_activity(list(user.habits), user.subscription_status)
+        habits = list(user.habits)
+        if user.subscription_status != "pro":
+            habits.sort(key=lambda h: h.created_at, reverse=True)
+            habits = habits[:2]
+            user.habits = habits
+
+        attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
 

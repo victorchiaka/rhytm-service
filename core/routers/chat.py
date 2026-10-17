@@ -6,11 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.ai.base import ToolContext
 from core.schemas.chat import SendMessageRequest
-from core.security import get_current_user
+from core.security import get_current_user, require_pro_user
 from core.services.chat import ChatService
 from db.database import get_db
 
-chat_router = APIRouter(prefix="/chats", tags=["Chats"])
+chat_router = APIRouter(
+    prefix="/chats",
+    tags=["Chats"],
+    dependencies=[Depends(require_pro_user)],
+)
 
 chat_service = ChatService()
 

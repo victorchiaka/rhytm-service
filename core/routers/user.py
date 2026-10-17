@@ -12,7 +12,7 @@ from core.schemas.user import (
     SignupRequest,
     UserResponse,
 )
-from core.security import get_current_user
+from core.security import get_current_user, require_pro_user
 from core.services.user import UserService
 from db.database import get_db
 from db.rdb import get_rdb
@@ -130,7 +130,7 @@ async def delete_account(
 @users_router.post("/export/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate_export(
     format: str,  # "pdf" or "excel"
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_pro_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
@@ -145,7 +145,7 @@ async def generate_export(
 @users_router.get("/export/download/{job_id}", status_code=status.HTTP_200_OK)
 async def download_export(
     job_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_pro_user),
     rdb: Redis = Depends(get_rdb),
 ):
     return await user_service.download_export(

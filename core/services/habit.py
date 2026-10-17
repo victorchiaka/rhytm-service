@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -25,6 +25,7 @@ from core.utils import (
     attach_activity,
     check_reminder_before_routine,
     fmt_days,
+    get_activity_window,
     is_time_in_period,
 )
 
@@ -141,6 +142,20 @@ class HabitService:
         payload: CreateHabitRequest,
         db: AsyncSession,
     ) -> HabitResponse:
+        if subscription_status != "pro":
+            count_result = await db.execute(
+                select(func.count(Habit.id)).where(
+                    Habit.user_id == user_id,
+                    Habit.deleted_at.is_(None),
+                )
+            )
+            habit_count = count_result.scalar_one()
+            if habit_count >= 2:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=HABIT_MESSAGES.FREE_LIMIT_REACHED,
+                )
+
         habit_days = sorted(set(payload.days_of_week))
         await self._check_reminder_conflict(
             db, user_id, payload.reminder_time, habit_days
@@ -161,11 +176,24 @@ class HabitService:
     async def get_all(
         self, user_id: str, subscription_status: str, db: AsyncSession
     ) -> list[HabitResponse]:
-        result = await db.execute(
+        from_date, to_date = get_activity_window(subscription_status)
+        query = (
             select(Habit)
-            .options(selectinload(Habit.activity_logs))
+            .options(
+                selectinload(
+                    Habit.activity_logs.and_(
+                        ActivityLog.activity_date >= from_date,
+                        ActivityLog.activity_date <= to_date,
+                    )
+                )
+            )
             .where(Habit.user_id == user_id, Habit.deleted_at.is_(None))
+            .order_by(Habit.created_at.desc())
         )
+        if subscription_status != "pro":
+            query = query.limit(2)
+
+        result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
         return attach_activity(habits, subscription_status)
 
@@ -177,15 +205,28 @@ class HabitService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
             )
-        result = await db.execute(
+        from_date, to_date = get_activity_window(subscription_status)
+        query = (
             select(Habit)
-            .options(selectinload(Habit.activity_logs))
+            .options(
+                selectinload(
+                    Habit.activity_logs.and_(
+                        ActivityLog.activity_date >= from_date,
+                        ActivityLog.activity_date <= to_date,
+                    )
+                )
+            )
             .where(
                 Habit.user_id == user_id,
                 Habit.days_of_week.contains([day_digit]),
                 Habit.deleted_at.is_(None),
             )
+            .order_by(Habit.created_at.desc())
         )
+        if subscription_status != "pro":
+            query = query.limit(2)
+
+        result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
         return attach_activity(habits, subscription_status)
 
@@ -199,9 +240,17 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
+        from_date, to_date = get_activity_window(subscription_status)
         result = await db.execute(
             select(Habit)
-            .options(selectinload(Habit.activity_logs))
+            .options(
+                selectinload(
+                    Habit.activity_logs.and_(
+                        ActivityLog.activity_date >= from_date,
+                        ActivityLog.activity_date <= to_date,
+                    )
+                )
+            )
             .where(
                 Habit.id == habit_uuid,
                 Habit.user_id == user_id,
@@ -261,11 +310,17 @@ class HabitService:
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
         await db.commit()
-        # Re-select: the update refreshes updated_at on the server, which a partial
-        # refresh() would leave expired and un-loadable outside a greenlet.
+        from_date, to_date = get_activity_window(subscription_status)
         refreshed_result = await db.execute(
             select(Habit)
-            .options(selectinload(Habit.activity_logs))
+            .options(
+                selectinload(
+                    Habit.activity_logs.and_(
+                        ActivityLog.activity_date >= from_date,
+                        ActivityLog.activity_date <= to_date,
+                    )
+                )
+            )
             .where(Habit.id == habit_uuid)
         )
         habit = refreshed_result.scalar_one()
@@ -393,23 +448,37 @@ class HabitService:
         )
         valid_habit_ids = {h for h in habit_check.scalars().all()}
 
-        processed = 0
+        # Parse all valid activities upfront
+        parsed_activities = []
         for activity in payload.activities:
             if activity.habit_id not in valid_habit_ids:
                 continue
-
             try:
                 act_date = date.fromisoformat(activity.date)
             except ValueError:
                 continue
+            parsed_activities.append((activity, act_date))
 
-            existing = await db.execute(
-                select(ActivityLog).where(
-                    ActivityLog.habit_id == activity.habit_id,
-                    ActivityLog.activity_date == act_date,
+        if not parsed_activities:
+            return SyncActivityResponse(message="Nothing to sync", processed=0)
+
+        # Batch-fetch all existing logs in a single query
+        lookup_pairs = [(a.habit_id, d) for a, d in parsed_activities]
+        existing_result = await db.execute(
+            select(ActivityLog).where(
+                tuple_(ActivityLog.habit_id, ActivityLog.activity_date).in_(
+                    lookup_pairs
                 )
             )
-            existing_log = existing.scalars().first()
+        )
+        existing_map = {
+            (log.habit_id, log.activity_date): log
+            for log in existing_result.scalars().all()
+        }
+
+        processed = 0
+        for activity, act_date in parsed_activities:
+            existing_log = existing_map.get((activity.habit_id, act_date))
 
             if activity.action == SyncActionEnum.CHECK_IN:
                 if not existing_log:
