@@ -25,7 +25,7 @@ async def build_user_context(user_id: str, db: AsyncSession) -> str:
         (
             await db.execute(
                 select(Routine)
-                .options(selectinload(Routine.habits))
+                .options(selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))))
                 .where(Routine.user_id == user_id, Routine.deleted_at.is_(None))
                 .order_by(Routine.time_of_day)
             )
@@ -43,7 +43,7 @@ def _render(habits: list[Habit], routines: list[Routine]) -> str:
     ]
     routine_lines = [
         f"- {r.name} | {r.time_of_day} {r.period_of_day.value} | days {fmt_days(r.frequency) or '-'} "
-        f"| habits: {', '.join(h.name for h in r.habits if h.deleted_at is None)}"
+        f"| habits: {', '.join(h.name for h in r.habits)}"
         for r in routines
     ]
     return "\n".join(

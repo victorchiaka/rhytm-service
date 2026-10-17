@@ -181,6 +181,20 @@ def generate_activity_grid(
     }
 
 
+def get_activity_window(subscription_status: str = "basic") -> tuple[date, date]:
+    """Return the (from_date, to_date) window for activity grids.
+
+    Subscribed users get YEAR scope, basic users get MONTH.
+    """
+    base_date = datetime.now(UTC).date()
+    if subscription_status not in ("basic", None):
+        return base_date.replace(month=1, day=1), base_date.replace(month=12, day=31)
+    from_date = base_date.replace(day=1)
+    next_month = from_date.replace(day=28) + timedelta(days=4)
+    to_date = next_month - timedelta(days=next_month.day)
+    return from_date, to_date
+
+
 def attach_activity(habits: list, subscription_status: str = "basic") -> list:
     """Attach the dense activity grid to a list of HabitResponse-like objects.
 

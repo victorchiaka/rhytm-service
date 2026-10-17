@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -615,7 +615,7 @@ async def _active_routines(ctx: ToolContext, db: AsyncSession) -> list[Routine]:
         (
             await db.execute(
                 select(Routine)
-                .options(selectinload(Routine.habits))
+                .options(selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))))
                 .where(Routine.user_id == ctx.user_id, Routine.deleted_at.is_(None))
             )
         )
@@ -629,7 +629,7 @@ async def _active_habits(ctx: ToolContext, db: AsyncSession) -> list[Habit]:
         (
             await db.execute(
                 select(Habit)
-                .options(selectinload(Habit.routines))
+                .options(selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))))
                 .where(Habit.user_id == ctx.user_id, Habit.deleted_at.is_(None))
             )
         )
@@ -639,12 +639,23 @@ async def _active_habits(ctx: ToolContext, db: AsyncSession) -> list[Habit]:
 
 
 async def _find_routine(key: str, ctx: ToolContext, db: AsyncSession) -> Routine:
-    routines = await _active_routines(ctx, db)
-    wanted, wanted_id = key.casefold(), _uuid(key)
-    routine = next(
-        (r for r in routines if r.id == wanted_id or r.name.casefold() == wanted), None
+    wanted_id = _uuid(key)
+    conditions = [func.lower(Routine.name) == key.lower()]
+    if wanted_id:
+        conditions.append(Routine.id == wanted_id)
+
+    result = await db.execute(
+        select(Routine)
+        .options(selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))))
+        .where(
+            Routine.user_id == ctx.user_id,
+            Routine.deleted_at.is_(None),
+            or_(*conditions),
+        )
     )
+    routine = result.scalars().first()
     if routine is None:
+        routines = await _active_routines(ctx, db)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             f"No active routine named '{key}'. Existing: "
@@ -655,12 +666,23 @@ async def _find_routine(key: str, ctx: ToolContext, db: AsyncSession) -> Routine
 
 
 async def _find_habit(key: str, ctx: ToolContext, db: AsyncSession) -> Habit:
-    habits = await _active_habits(ctx, db)
-    wanted, wanted_id = key.casefold(), _uuid(key)
-    habit = next(
-        (h for h in habits if h.id == wanted_id or h.name.casefold() == wanted), None
+    wanted_id = _uuid(key)
+    conditions = [func.lower(Habit.name) == key.lower()]
+    if wanted_id:
+        conditions.append(Habit.id == wanted_id)
+
+    result = await db.execute(
+        select(Habit)
+        .options(selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))))
+        .where(
+            Habit.user_id == ctx.user_id,
+            Habit.deleted_at.is_(None),
+            or_(*conditions),
+        )
     )
+    habit = result.scalars().first()
     if habit is None:
+        habits = await _active_habits(ctx, db)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             f"No active habit named '{key}'. Existing: "

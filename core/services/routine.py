@@ -121,7 +121,7 @@ class RoutineService:
 
         query = (
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))))
             .where(
                 Routine.user_id == user_id,
                 Routine.frequency.overlap(frequency),
@@ -137,8 +137,7 @@ class RoutineService:
         for existing in existing_routines:
             eh, em = map(int, existing.time_of_day.split(":"))
             existing_start = eh * 60 + em
-            active_habits = [h for h in existing.habits if h.deleted_at is None]
-            existing_habit_count = len(active_habits)
+            existing_habit_count = len(existing.habits)
             existing_duration = max(30, existing_habit_count * estimated_mins_per_habit)
             existing_end = existing_start + existing_duration
 
@@ -167,29 +166,30 @@ class RoutineService:
         freq_set = set(frequency)
         period_val = period.value if hasattr(period, "value") else str(period)
 
-        for habit_id in habit_ids:
-            result = await db.execute(
-                select(Habit)
-                .options(selectinload(Habit.routines))
-                .where(
-                    Habit.id == habit_id,
-                    Habit.user_id == user_id,
-                    Habit.deleted_at.is_(None),
-                )
+        result = await db.execute(
+            select(Habit)
+            .options(selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))))
+            .where(
+                Habit.id.in_(habit_ids),
+                Habit.user_id == user_id,
+                Habit.deleted_at.is_(None),
             )
-            habit = result.scalars().first()
+        )
+        habit_map = {h.id: h for h in result.scalars().all()}
 
+        for habit_id in habit_ids:
+            habit = habit_map.get(habit_id)
             if not habit:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=ROUTINE_MESSAGES.HABIT_NOT_FOUND.format(habit_id=habit_id),
                 )
+            habits.append(habit)
 
-            active_routines = [r for r in habit.routines if r.deleted_at is None]
             conflict = next(
                 (
                     r
-                    for r in active_routines
+                    for r in habit.routines
                     if r.id != exclude_routine_id
                     and r.period_of_day == period
                     and (set(r.frequency or []) & freq_set)
@@ -243,7 +243,6 @@ class RoutineService:
                     ),
                 )
 
-            habits.append(habit)
 
         return habits
 
@@ -272,7 +271,11 @@ class RoutineService:
         refreshed_result = await db.execute(
             select(Routine)
             .where(Routine.id == new_routine.id)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
         )
         return refreshed_result.scalar_one()
 
@@ -317,7 +320,11 @@ class RoutineService:
     async def get_all(self, user_id: str, db: AsyncSession) -> list[RoutineResponse]:
         result = await db.execute(
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
             .where(Routine.user_id == user_id, Routine.deleted_at.is_(None))
         )
         routines = result.scalars().all()
@@ -331,7 +338,11 @@ class RoutineService:
             )
         result = await db.execute(
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
             .where(
                 Routine.user_id == user_id,
                 Routine.frequency.contains([day_digit]),
@@ -351,7 +362,11 @@ class RoutineService:
             )
         result = await db.execute(
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
             .where(
                 Routine.id == routine_uuid,
                 Routine.user_id == user_id,
@@ -383,7 +398,11 @@ class RoutineService:
             )
         result = await db.execute(
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
             .where(
                 Routine.id == routine_uuid,
                 Routine.user_id == user_id,
@@ -438,7 +457,11 @@ class RoutineService:
         refreshed_result = await db.execute(
             select(Routine)
             .where(Routine.id == routine.id)
-            .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
+                    Habit.activity_logs
+                )
+            )
         )
         updated_routine = refreshed_result.scalar_one()
 
@@ -458,7 +481,10 @@ class RoutineService:
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits).selectinload(Habit.routines), selectinload(Routine.habits).selectinload(Habit.activity_logs)
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
+                .selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))),
+                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
+                .selectinload(Habit.activity_logs),
             )
             .where(
                 Routine.id == routine_uuid,
@@ -478,11 +504,9 @@ class RoutineService:
         exclusive_habit_ids: list[str] = []
 
         for habit in routine.habits:
-            if habit.deleted_at is not None:
-                continue
             active_other_routines = [
                 r for r in habit.routines
-                if r.id != routine.id and r.deleted_at is None
+                if r.id != routine.id
             ]
             habit_resp = HabitResponse.model_validate(habit)
             if not active_other_routines:
@@ -557,7 +581,12 @@ class RoutineService:
 
         result = await db.execute(
             select(Routine)
-            .options(selectinload(Routine.habits).selectinload(Habit.routines), selectinload(Routine.habits).selectinload(Habit.activity_logs))
+            .options(
+                selectinload(Routine.habits).selectinload(
+                    Habit.routines.and_(Routine.deleted_at.is_(None))
+                ),
+                selectinload(Routine.habits).selectinload(Habit.activity_logs),
+            )
             .where(
                 Routine.id == routine_uuid,
                 Routine.user_id == user_id,
@@ -619,7 +648,7 @@ class RoutineService:
                     continue
                 other_active = [
                     r for r in habit.routines
-                    if r.id != routine.id and r.deleted_at is None
+                    if r.id != routine.id
                 ]
                 if not other_active:
                     habit.deleted_at = now_utc
@@ -697,7 +726,11 @@ class RoutineService:
             refreshed = (
                 await db.execute(
                     select(Routine)
-                    .options(selectinload(Routine.habits).selectinload(Habit.activity_logs))
+                    .options(
+                        selectinload(
+                            Routine.habits.and_(Habit.deleted_at.is_(None))
+                        ).selectinload(Habit.activity_logs)
+                    )
                     .where(Routine.id == restored_routine.id)
                 )
             ).scalar_one()
