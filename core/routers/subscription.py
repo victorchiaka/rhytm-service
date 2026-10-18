@@ -10,7 +10,9 @@ subscriptions_router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"]
 subscription_service = SubscriptionService()
 
 
-@subscriptions_router.get("/benefits", response_model=BenefitsResponse, status_code=status.HTTP_200_OK)
+@subscriptions_router.get(
+    "/benefits", response_model=BenefitsResponse, status_code=status.HTTP_200_OK
+)
 async def get_benefits():
     return await subscription_service.populate_benefits()
 

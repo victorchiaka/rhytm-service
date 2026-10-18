@@ -284,3 +284,5 @@ def attach_user_activity(user, subscription_status: str = "basic") -> dict:
     grid = generate_user_activity_grid(user.id, dates, scope)
     user.activity = grid
     return grid
+
+
