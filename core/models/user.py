@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text, func
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -57,6 +57,12 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    activity_logs = relationship(
+        "UserActivityLog",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Session(Base):
@@ -76,3 +82,25 @@ class Session(Base):
     )
 
     user = relationship("User", back_populates="sessions")
+
+
+class UserActivityLog(Base):
+    __tablename__ = "user_activity_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    activity_date = Column(Date, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    user = relationship("User", back_populates="activity_logs")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "activity_date", name="uq_user_activity_lookup"),
+    )

@@ -102,7 +102,7 @@ class SubscriptionService:
                 "customer": user.stripe_customer_id,
                 "line_items": [{"price": price_id, "quantity": 1}],
                 "mode": "subscription",
-                "success_url": "https://rhytm.top", # Not functional url, TODO: will swap for something
+                "success_url": "https://rhytm.top",  # Not functional url, TODO: will swap for something
             }
         )
 
@@ -138,14 +138,24 @@ class SubscriptionService:
 
     async def _on_payment_succeeded(self, invoice, db: AsyncSession) -> None:
         customer = getattr(invoice, "customer", None)
-        customer_id = customer if isinstance(customer, str) else getattr(customer, "id", None)
+        customer_id = (
+            customer if isinstance(customer, str) else getattr(customer, "id", None)
+        )
 
         subscription = getattr(invoice, "subscription", None)
-        sub_details = getattr(getattr(invoice, "parent", None), "subscription_details", None)
-        sub_from_parent = getattr(sub_details, "subscription", None) if sub_details else None
+        sub_details = getattr(
+            getattr(invoice, "parent", None), "subscription_details", None
+        )
+        sub_from_parent = (
+            getattr(sub_details, "subscription", None) if sub_details else None
+        )
 
         subscription = subscription or sub_from_parent
-        subscription_id = subscription if isinstance(subscription, str) else getattr(subscription, "id", None)
+        subscription_id = (
+            subscription
+            if isinstance(subscription, str)
+            else getattr(subscription, "id", None)
+        )
 
         if not (customer_id and subscription_id):
             logger.warning(
@@ -164,11 +174,17 @@ class SubscriptionService:
         item = sub.items.data[0]
         interval = item.price.recurring.interval
 
-        period_end = getattr(item, "current_period_end", None) or getattr(sub, "current_period_end", None) or getattr(invoice, "period_end", None)
+        period_end = (
+            getattr(item, "current_period_end", None)
+            or getattr(sub, "current_period_end", None)
+            or getattr(invoice, "period_end", None)
+        )
 
         user.plan = PLAN_INTERVALS.get(interval, "monthly")
         user.subscription_status = "pro"
-        user.plan_expires_at = datetime.fromtimestamp(period_end, tz=UTC) if period_end else None
+        user.plan_expires_at = (
+            datetime.fromtimestamp(period_end, tz=UTC) if period_end else None
+        )
         await db.commit()
         logger.info(
             f"[WEBHOOK] Activated '{user.plan}' (status: {user.subscription_status}) for user {user.id} until {user.plan_expires_at}"

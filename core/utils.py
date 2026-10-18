@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, date, datetime, timedelta, timezone
+from uuid import UUID
 
 import resend
 from dotenv import load_dotenv
@@ -205,3 +206,83 @@ def attach_activity(habits: list, subscription_status: str = "basic") -> list:
         dates = {log.activity_date for log in habit.activity_logs}
         habit.activity = generate_activity_grid(habit.id, dates, scope)
     return habits
+
+
+def generate_user_activity_grid(
+    user_id: str | UUID,
+    activity_dates: set[date],
+    scope: str = "MONTH",
+    base_date: date | None = None,
+) -> dict:
+    """Generate a dense user grid (UserActivityLogResponse dict format) from raw dates."""
+    base_date = base_date or datetime.now(UTC).date()
+    scope = scope.upper()
+
+    if scope == "MONTH":
+        from_date = base_date.replace(day=1)
+        next_month = from_date.replace(day=28) + timedelta(days=4)
+        to_date = next_month - timedelta(days=next_month.day)
+    else:  # YEAR
+        from_date = base_date.replace(month=1, day=1)
+        to_date = base_date.replace(month=12, day=31)
+
+    grid_start_date = from_date - timedelta(days=from_date.weekday())
+    grid_end_date = to_date + timedelta(days=6 - to_date.weekday())
+
+    weeks = []
+    current_date = grid_start_date
+
+    while current_date <= grid_end_date:
+        current_week_days = []
+        week_start_dt = datetime(
+            current_date.year, current_date.month, current_date.day, tzinfo=timezone.utc
+        )
+        week_timestamp = int(week_start_dt.timestamp())
+
+        total = 0
+        for _ in range(7):
+            if (
+                current_date < from_date
+                or current_date > to_date
+                or current_date > base_date
+            ):
+                val = -1
+            elif current_date in activity_dates:
+                val = 1
+                total += 1
+            else:
+                val = 0
+            current_week_days.append(val)
+            current_date += timedelta(days=1)
+
+        weeks.append(
+            {"week": week_timestamp, "days": current_week_days, "total": total}
+        )
+
+    return {
+        "user_id": str(user_id),
+        "scope": scope,
+        "from": from_date.isoformat(),
+        "to": to_date.isoformat(),
+        "weeks": weeks,
+    }
+
+
+def attach_user_activity(user, subscription_status: str = "basic") -> dict:
+    """Attach the dense activity grid to user response.
+
+    Subscribed users get YEAR scope, basic users get MONTH.
+    """
+    scope = "YEAR" if subscription_status not in ("basic", None) else "MONTH"
+    from_date, to_date = get_activity_window(subscription_status)
+    all_logs = getattr(user, "activity_logs", [])
+    dates = {
+        log.activity_date
+        for log in all_logs
+        if from_date <= log.activity_date <= to_date
+    }
+    grid = generate_user_activity_grid(user.id, dates, scope)
+    user.activity = grid
+    return grid
+
+

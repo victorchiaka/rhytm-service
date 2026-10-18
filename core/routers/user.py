@@ -10,6 +10,7 @@ from core.schemas.user import (
     RequestPasswordResetRequest,
     ResetPasswordRequest,
     SignupRequest,
+    UserActivityLogResponse,
     UserResponse,
 )
 from core.security import get_current_user, require_pro_user
@@ -111,6 +112,27 @@ async def get_profile(
     db: AsyncSession = Depends(get_db),
 ):
     return await user_service.get_profile(user_id=current_user["user_id"], db=db)
+
+
+@users_router.get(
+    "/me/activity",
+    response_model=UserActivityLogResponse,
+    status_code=status.HTTP_200_OK,
+    description="Fetches user overall activity log in a dense week format (0 = did not show up, 1 = showed up).",
+)
+async def get_user_activity(
+    scope: str | None = None,
+    date: str | None = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserActivityLogResponse:
+    return await user_service.get_user_activity(
+        user_id=current_user["user_id"],
+        subscription_status=current_user.get("subscription_status", "basic"),
+        scope=scope,
+        target_date=date,
+        db=db,
+    )
 
 
 @users_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

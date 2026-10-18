@@ -5,8 +5,9 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from types import SimpleNamespace
+from uuid import UUID
 
 import jwt
 from dotenv import load_dotenv
@@ -21,8 +22,8 @@ from sqlalchemy.orm import selectinload
 from core.messages import USER_MESSAGES
 from core.models.habit import ActivityLog, Habit
 from core.models.routine import Routine
-from core.models.user import Session, User
-from core.schemas.user import UserResponse
+from core.models.user import Session, User, UserActivityLog
+from core.schemas.user import UserActivityLogResponse, UserResponse
 from core.security import (
     create_token,
     decode_token,
@@ -32,6 +33,8 @@ from core.security import (
 )
 from core.utils import (
     attach_activity,
+    attach_user_activity,
+    generate_user_activity_grid,
     send_email_otp,
     send_reset_password_email,
     send_welcome_mail,
@@ -709,6 +712,7 @@ class UserService:
                 selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
                     Habit.activity_logs
                 ),
+                selectinload(User.activity_logs),
             )
             .where(User.email == normalized_email)
         )
@@ -731,6 +735,7 @@ class UserService:
         attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
+        attach_user_activity(user, user.subscription_status)
 
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,
@@ -753,6 +758,7 @@ class UserService:
                 selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
                     Habit.activity_logs
                 ),
+                selectinload(User.activity_logs),
             )
             .where(User.email == normalized_email)
         )
@@ -775,6 +781,7 @@ class UserService:
         attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
+        attach_user_activity(user, user.subscription_status)
 
         return {
             "message": USER_MESSAGES.LOGIN_SUCCESS,
@@ -987,6 +994,7 @@ class UserService:
                 selectinload(User.habits.and_(Habit.deleted_at.is_(None))).selectinload(
                     Habit.activity_logs
                 ),
+                selectinload(User.activity_logs),
             )
             .where(User.id == user_id)
         )
@@ -1005,8 +1013,76 @@ class UserService:
         attach_activity(habits, user.subscription_status)
         for r in user.routines:
             attach_activity(list(r.habits), user.subscription_status)
+        attach_user_activity(user, user.subscription_status)
 
         return UserResponse.model_validate(user).model_dump()
+
+    async def get_user_activity(
+        self,
+        user_id: str,
+        subscription_status: str,
+        scope: str | None,
+        target_date: str | None,
+        db: AsyncSession,
+    ) -> UserActivityLogResponse:
+        try:
+            user_uuid = UUID(str(user_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=USER_MESSAGES.USER_NOT_FOUND,
+            )
+
+        if scope:
+            scope = scope.upper()
+            if scope not in ("MONTH", "YEAR"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Scope must be MONTH or YEAR",
+                )
+            if scope == "YEAR" and subscription_status not in ("pro", "subscribed"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Yearly activity view requires a Pro subscription.",
+                )
+        else:
+            scope = "YEAR" if subscription_status in ("pro", "subscribed") else "MONTH"
+
+        if target_date:
+            try:
+                base_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid date format. Use YYYY-MM-DD",
+                )
+        else:
+            base_date = datetime.now(timezone.utc).date()
+
+        if scope == "MONTH":
+            from_date = base_date.replace(day=1)
+            next_month = from_date.replace(day=28) + timedelta(days=4)
+            to_date = next_month - timedelta(days=next_month.day)
+        else:
+            from_date = base_date.replace(month=1, day=1)
+            to_date = base_date.replace(month=12, day=31)
+
+        activity_query = await db.execute(
+            select(UserActivityLog.activity_date).where(
+                UserActivityLog.user_id == user_uuid,
+                UserActivityLog.activity_date >= from_date,
+                UserActivityLog.activity_date <= to_date,
+            )
+        )
+        activity_dates = set(activity_query.scalars().all())
+
+        grid_data = generate_user_activity_grid(
+            user_id=user_uuid,
+            activity_dates=activity_dates,
+            scope=scope,
+            base_date=base_date,
+        )
+        return UserActivityLogResponse(**grid_data)
 
     async def delete_account(
         self, user_id: str, access_token: str, db: AsyncSession, rdb: Redis
