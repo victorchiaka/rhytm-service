@@ -3,13 +3,14 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import delete, distinct, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.messages import HABIT_MESSAGES, ROUTINE_MESSAGES
 from core.models.habit import ActivityLog, Habit
 from core.models.routine import Routine
+from core.models.user import UserActivityLog
 from core.schemas.habit import (
     ActivityLogResponse,
     CheckInRequest,
@@ -491,6 +492,43 @@ class HabitService:
                     await db.delete(existing_log)
                     processed += 1
 
+        await db.flush()
+
+        user_uuid = UUID(str(user_id))
+        affected_dates = {act_date for _, act_date in parsed_activities}
+        if affected_dates:
+            active_dates_query = await db.execute(
+                select(distinct(ActivityLog.activity_date))
+                .join(Habit, ActivityLog.habit_id == Habit.id)
+                .where(
+                    Habit.user_id == user_uuid,
+                    Habit.deleted_at.is_(None),
+                    ActivityLog.activity_date.in_(affected_dates),
+                )
+            )
+            dates_with_checkins = set(active_dates_query.scalars().all())
+            dates_without_checkins = affected_dates - dates_with_checkins
+
+            user_logs_query = await db.execute(
+                select(UserActivityLog.activity_date).where(
+                    UserActivityLog.user_id == user_uuid,
+                    UserActivityLog.activity_date.in_(affected_dates),
+                )
+            )
+            existing_user_dates = set(user_logs_query.scalars().all())
+
+            for d in dates_with_checkins - existing_user_dates:
+                db.add(UserActivityLog(user_id=user_uuid, activity_date=d))
+
+            to_remove = dates_without_checkins & existing_user_dates
+            if to_remove:
+                await db.execute(
+                    delete(UserActivityLog).where(
+                        UserActivityLog.user_id == user_uuid,
+                        UserActivityLog.activity_date.in_(to_remove),
+                    )
+                )
+
         await db.commit()
         return SyncActivityResponse(message="Sync successful", processed=processed)
 
@@ -539,7 +577,18 @@ class HabitService:
         )
         if not existing.scalars().first():
             db.add(ActivityLog(habit_id=habit_uuid, activity_date=act_date))
-            await db.commit()
+
+        user_uuid = UUID(str(user_id))
+        user_log_check = await db.execute(
+            select(UserActivityLog.id).where(
+                UserActivityLog.user_id == user_uuid,
+                UserActivityLog.activity_date == act_date,
+            )
+        )
+        if not user_log_check.scalar_one_or_none():
+            db.add(UserActivityLog(user_id=user_uuid, activity_date=act_date))
+
+        await db.commit()
 
         undo_token = str(uuid4())
         cache_key = f"habit_undo:{user_id}:{habit_uuid}:{act_date.isoformat()}"
@@ -619,6 +668,27 @@ class HabitService:
         existing_log = existing.scalars().first()
         if existing_log:
             await db.delete(existing_log)
+            await db.flush()
+
+            user_uuid = UUID(str(user_id))
+            remaining_check = await db.execute(
+                select(ActivityLog.id)
+                .join(Habit, ActivityLog.habit_id == Habit.id)
+                .where(
+                    Habit.user_id == user_uuid,
+                    Habit.deleted_at.is_(None),
+                    ActivityLog.activity_date == act_date,
+                )
+                .limit(1)
+            )
+            if not remaining_check.scalar_one_or_none():
+                await db.execute(
+                    delete(UserActivityLog).where(
+                        UserActivityLog.user_id == user_uuid,
+                        UserActivityLog.activity_date == act_date,
+                    )
+                )
+
             await db.commit()
 
         await rdb.delete(cache_key)

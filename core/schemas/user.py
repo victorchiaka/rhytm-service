@@ -1,9 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
-from core.schemas.habit import HabitResponse
+from core.schemas.habit import ActivityWeek, HabitResponse
 from core.schemas.routine import RoutineResponse
 
 
@@ -41,6 +41,17 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class UserActivityLogResponse(BaseModel):
+    user_id: UUID
+    scope: str
+    from_: str = Field(alias="from")
+    to: str
+    weeks: list[ActivityWeek]
+
+    class Config:
+        populate_by_name = True
+
+
 class UserResponse(BaseModel):
     id: UUID
     full_name: str
@@ -53,6 +64,7 @@ class UserResponse(BaseModel):
     updated_at: datetime
     routines: list[RoutineResponse] = []
     habits: list[HabitResponse] = []
+    activity: UserActivityLogResponse | None = None
 
     class Config:
         from_attributes = True
