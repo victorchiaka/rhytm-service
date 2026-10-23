@@ -40,6 +40,7 @@ async def create_habit(
         subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -51,6 +52,7 @@ async def get_all(
         user_id=current_user["user_id"],
         subscription_status=current_user["subscription_status"],
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -67,6 +69,7 @@ async def get_today_habits(
         day_digit=day,
         subscription_status=current_user["subscription_status"],
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -98,6 +101,7 @@ async def get_habit(
         habit_id=id,
         subscription_status=current_user["subscription_status"],
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -119,6 +123,7 @@ async def get_habit_activity(
         scope=scope,
         target_date=date,
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -135,7 +140,12 @@ async def check_in_habit(
     rdb: Redis = Depends(get_rdb),
 ):
     return await habit_service.check_in(
-        habit_id=id, user_id=current_user["user_id"], payload=payload, db=db, rdb=rdb
+        habit_id=id,
+        user_id=current_user["user_id"],
+        payload=payload,
+        db=db,
+        rdb=rdb,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -159,6 +169,7 @@ async def undo_check_in_habit(
         undo_token=undo_token,
         db=db,
         rdb=rdb,
+        tz=current_user.get("timezone"),
     )
 
 
@@ -183,6 +194,7 @@ async def update_habit(
         subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
+        tz=current_user.get("timezone"),
     )
 
 

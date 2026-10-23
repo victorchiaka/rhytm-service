@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -38,6 +38,7 @@ from core.utils import (
     send_email_otp,
     send_reset_password_email,
     send_welcome_mail,
+    today_in,
 )
 from db.database import AsyncSessionLocal
 
@@ -334,7 +335,7 @@ class UserService:
 
     @staticmethod
     def _build_performance_stats(user, routines, habits, logs) -> dict:
-        today = datetime.now(UTC).date()
+        today = today_in(getattr(user, "timezone", None))
         cutoff_7 = today - timedelta(days=6)
         cutoff_30 = today - timedelta(days=29)
 
@@ -624,7 +625,12 @@ class UserService:
         )
 
     async def initiate_signup(
-        self, email: str, full_name: str, db: AsyncSession, rdb: Redis
+        self,
+        email: str,
+        full_name: str,
+        timezone: str | None,
+        db: AsyncSession,
+        rdb: Redis,
     ) -> dict:
         normalized_email = email.lower()
         result = await db.execute(select(User).where(User.email == normalized_email))
@@ -642,6 +648,7 @@ class UserService:
             "full_name": full_name,
             "email": normalized_email,
             "otp": otp,
+            "timezone": timezone,
         }
         await rdb.set(redis_key, json.dumps(signup_data), ex=SIGNUP_OTP_EXPIRY_SECONDS)
 
@@ -697,6 +704,7 @@ class UserService:
             full_name=data["full_name"],
             email=normalized_email,
             password=hash_password(password),
+            timezone=data.get("timezone"),
         )
         db.add(new_user)
         await db.commit()
@@ -732,9 +740,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return {
@@ -778,9 +786,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return {
@@ -1010,9 +1018,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return UserResponse.model_validate(user).model_dump()
@@ -1024,6 +1032,7 @@ class UserService:
         scope: str | None,
         target_date: str | None,
         db: AsyncSession,
+        tz: str | None = None,
     ) -> UserActivityLogResponse:
         try:
             user_uuid = UUID(str(user_id))
@@ -1057,7 +1066,7 @@ class UserService:
                     detail="Invalid date format. Use YYYY-MM-DD",
                 )
         else:
-            base_date = datetime.now(timezone.utc).date()
+            base_date = today_in(tz)
 
         if scope == "MONTH":
             from_date = base_date.replace(day=1)

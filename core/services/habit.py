@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -28,6 +28,7 @@ from core.utils import (
     fmt_days,
     get_activity_window,
     is_time_in_period,
+    today_in,
 )
 
 
@@ -142,6 +143,7 @@ class HabitService:
         subscription_status: str,
         payload: CreateHabitRequest,
         db: AsyncSession,
+        tz: str | None = None,
     ) -> HabitResponse:
         if subscription_status != "pro":
             count_result = await db.execute(
@@ -171,13 +173,17 @@ class HabitService:
         await db.commit()
         await db.refresh(new_habit, ["activity_logs"])
         habit = HabitResponse.model_validate(new_habit)
-        attach_activity([habit], subscription_status)
+        attach_activity([habit], subscription_status, tz=tz)
         return habit
 
     async def get_all(
-        self, user_id: str, subscription_status: str, db: AsyncSession
+        self,
+        user_id: str,
+        subscription_status: str,
+        db: AsyncSession,
+        tz: str | None = None,
     ) -> list[HabitResponse]:
-        from_date, to_date = get_activity_window(subscription_status)
+        from_date, to_date = get_activity_window(subscription_status, tz)
         query = (
             select(Habit)
             .options(
@@ -196,17 +202,22 @@ class HabitService:
 
         result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
-        return attach_activity(habits, subscription_status)
+        return attach_activity(habits, subscription_status, tz=tz)
 
     async def get_by_day(
-        self, user_id: str, day_digit: int, subscription_status: str, db: AsyncSession
+        self,
+        user_id: str,
+        day_digit: int,
+        subscription_status: str,
+        db: AsyncSession,
+        tz: str | None = None,
     ) -> list[HabitResponse]:
         if day_digit not in range(7):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
             )
-        from_date, to_date = get_activity_window(subscription_status)
+        from_date, to_date = get_activity_window(subscription_status, tz)
         query = (
             select(Habit)
             .options(
@@ -229,10 +240,15 @@ class HabitService:
 
         result = await db.execute(query)
         habits = [HabitResponse.model_validate(h) for h in result.scalars().all()]
-        return attach_activity(habits, subscription_status)
+        return attach_activity(habits, subscription_status, tz=tz)
 
     async def get_habit(
-        self, user_id: str, habit_id: str, subscription_status: str, db: AsyncSession
+        self,
+        user_id: str,
+        habit_id: str,
+        subscription_status: str,
+        db: AsyncSession,
+        tz: str | None = None,
     ) -> HabitResponse:
         try:
             habit_uuid = UUID(habit_id)
@@ -241,7 +257,7 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
-        from_date, to_date = get_activity_window(subscription_status)
+        from_date, to_date = get_activity_window(subscription_status, tz)
         result = await db.execute(
             select(Habit)
             .options(
@@ -265,7 +281,7 @@ class HabitService:
                 detail=HABIT_MESSAGES.NOT_FOUND,
             )
         habit_resp = HabitResponse.model_validate(habit)
-        attach_activity([habit_resp], subscription_status)
+        attach_activity([habit_resp], subscription_status, tz=tz)
         return habit_resp
 
     async def update_habit(
@@ -275,6 +291,7 @@ class HabitService:
         subscription_status: str,
         payload: UpdateHabitRequest,
         db: AsyncSession,
+        tz: str | None = None,
     ) -> HabitResponse:
         """Update an existing habit and evaluate standalone & routine compatibility guardrails."""
         try:
@@ -311,7 +328,7 @@ class HabitService:
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
         await db.commit()
-        from_date, to_date = get_activity_window(subscription_status)
+        from_date, to_date = get_activity_window(subscription_status, tz)
         refreshed_result = await db.execute(
             select(Habit)
             .options(
@@ -326,7 +343,7 @@ class HabitService:
         )
         habit = refreshed_result.scalar_one()
         habit_resp = HabitResponse.model_validate(habit)
-        attach_activity([habit_resp], subscription_status)
+        attach_activity([habit_resp], subscription_status, tz=tz)
         return habit_resp
 
     async def delete_habit(
@@ -380,6 +397,7 @@ class HabitService:
         scope: str,
         target_date: str | None,
         db: AsyncSession,
+        tz: str | None = None,
     ) -> ActivityLogResponse:
         try:
             habit_uuid = UUID(habit_id)
@@ -408,7 +426,7 @@ class HabitService:
                     status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
                 )
         else:
-            base_date = datetime.now(timezone.utc).date()
+            base_date = today_in(tz)
 
         from core.utils import generate_activity_grid
 
@@ -416,7 +434,7 @@ class HabitService:
         if scope not in ("MONTH", "YEAR"):
             raise HTTPException(status_code=400, detail="Scope must be MONTH or YEAR")
 
-        base_date = base_date or datetime.now(timezone.utc).date()
+        base_date = base_date or today_in(tz)
         if scope == "MONTH":
             from_date = base_date.replace(day=1)
             next_month = from_date.replace(day=28) + timedelta(days=4)
@@ -434,7 +452,9 @@ class HabitService:
         )
         activity_dates = {row for row in activity_query.scalars().all()}
 
-        grid_data = generate_activity_grid(habit_uuid, activity_dates, scope)
+        grid_data = generate_activity_grid(
+            habit_uuid, activity_dates, scope, base_date=base_date, tz=tz
+        )
         return ActivityLogResponse(**grid_data)
 
     async def sync_activity(
@@ -539,6 +559,7 @@ class HabitService:
         payload: CheckInRequest,
         db: AsyncSession,
         rdb: Redis,
+        tz: str | None = None,
     ) -> dict:
         try:
             habit_uuid = UUID(habit_id)
@@ -567,7 +588,7 @@ class HabitService:
                     status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
                 )
         else:
-            act_date = datetime.now(UTC).date()
+            act_date = today_in(tz)
 
         existing = await db.execute(
             select(ActivityLog).where(
@@ -609,6 +630,7 @@ class HabitService:
         undo_token: str,
         db: AsyncSession,
         rdb: Redis,
+        tz: str | None = None,
     ) -> dict:
         try:
             habit_uuid = UUID(habit_id)
@@ -637,7 +659,7 @@ class HabitService:
                     status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
                 )
         else:
-            act_date = datetime.now(UTC).date()
+            act_date = today_in(tz)
 
         cache_key = f"habit_undo:{user_id}:{habit_uuid}:{act_date.isoformat()}"
         cached_token = await rdb.get(cache_key)

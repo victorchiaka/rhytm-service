@@ -1,7 +1,8 @@
 from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from core.schemas.habit import ActivityWeek, HabitResponse
 from core.schemas.routine import RoutineResponse
@@ -10,6 +11,18 @@ from core.schemas.routine import RoutineResponse
 class SignupRequest(BaseModel):
     full_name: str
     email: EmailStr
+    timezone: str | None = None  # IANA identifier, e.g. "Asia/Dubai"
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError):
+            return None  # fall back to UTC
+        return v
 
 
 class CompleteSignupRequest(BaseModel):
@@ -59,6 +72,7 @@ class UserResponse(BaseModel):
     plan: str | None = None
     subscription_status: str = "basic"
     revenuecat_id: str | None = None
+    timezone: str | None = None
     plan_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

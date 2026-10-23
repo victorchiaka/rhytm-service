@@ -298,6 +298,7 @@ async def _update_habit(args: dict, ctx: ToolContext, db: AsyncSession) -> dict:
         ctx.subscription_status,
         UpdateHabitRequest(name=name, days_of_week=days, reminder_time=reminder),
         db,
+        tz=ctx.timezone,
     )
     return {
         "updated": True,
@@ -721,6 +722,7 @@ async def _resolve_habit_id(
         ctx.subscription_status,
         CreateHabitRequest(name=name, days_of_week=days, reminder_time=reminder),
         db,
+        tz=ctx.timezone,
     )
     return habit.id
 

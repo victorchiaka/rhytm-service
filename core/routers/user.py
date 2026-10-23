@@ -24,14 +24,22 @@ users_router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
 
 
-@auth_router.post("/signup", status_code=status.HTTP_200_OK)
+@auth_router.post(
+    "/signup",
+    status_code=status.HTTP_200_OK,
+    description="Send IANA timezone identifier too.",
+)
 async def signup(
     payload: SignupRequest,
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
     return await user_service.initiate_signup(
-        email=payload.email, full_name=payload.full_name, db=db, rdb=rdb
+        email=payload.email,
+        full_name=payload.full_name,
+        timezone=payload.timezone,
+        db=db,
+        rdb=rdb,
     )
 
 
@@ -131,6 +139,7 @@ async def get_user_activity(
         subscription_status=current_user.get("subscription_status", "basic"),
         scope=scope,
         target_date=date,
+        tz=current_user.get("timezone"),
         db=db,
     )
 

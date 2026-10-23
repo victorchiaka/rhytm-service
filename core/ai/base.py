@@ -35,6 +35,7 @@ class ToolContext:
 
     user_id: str
     subscription_status: str = "basic"
+    timezone: str | None = None  # IANA identifier for local-day calculations
 
 
 @dataclass

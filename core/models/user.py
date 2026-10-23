@@ -23,6 +23,7 @@ class User(Base):
     revenuecat_id = Column(Text, unique=True, nullable=True)
     stripe_customer_id = Column(Text, unique=True, nullable=True, index=True)
     plan_expires_at = Column(DateTime(timezone=True), nullable=True)
+    timezone = Column(Text, nullable=True)  # IANA identifier, e.g. "Asia/Dubai"
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
