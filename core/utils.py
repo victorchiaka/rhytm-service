@@ -1,5 +1,5 @@
 import os
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 import resend
@@ -148,10 +148,7 @@ def generate_activity_grid(
 
     while current_date <= grid_end_date:
         current_week_days = []
-        week_start_dt = datetime(
-            current_date.year, current_date.month, current_date.day, tzinfo=timezone.utc
-        )
-        week_timestamp = int(week_start_dt.timestamp())
+        week_start = current_date.isoformat()  # Monday of this week row
 
         total = 0
         for _ in range(7):
@@ -170,7 +167,7 @@ def generate_activity_grid(
             current_date += timedelta(days=1)
 
         weeks.append(
-            {"week": week_timestamp, "days": current_week_days, "total": total}
+            {"week": week_start, "days": current_week_days, "total": total}
         )
 
     return {
@@ -234,10 +231,7 @@ def generate_user_activity_grid(
 
     while current_date <= grid_end_date:
         current_week_days = []
-        week_start_dt = datetime(
-            current_date.year, current_date.month, current_date.day, tzinfo=timezone.utc
-        )
-        week_timestamp = int(week_start_dt.timestamp())
+        week_start = current_date.isoformat()  # Monday of this week row
 
         total = 0
         for _ in range(7):
@@ -256,7 +250,7 @@ def generate_user_activity_grid(
             current_date += timedelta(days=1)
 
         weeks.append(
-            {"week": week_timestamp, "days": current_week_days, "total": total}
+            {"week": week_start, "days": current_week_days, "total": total}
         )
 
     return {

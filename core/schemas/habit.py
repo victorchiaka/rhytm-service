@@ -69,7 +69,7 @@ class DeleteHabitResponse(BaseModel):
 
 
 class ActivityWeek(BaseModel):
-    week: int
+    week: str  # ISO date (YYYY-MM-DD) of the week's Monday
     days: list[int]
     total: int
 
