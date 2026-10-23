@@ -94,6 +94,7 @@ async def get_current_user(
         "user_id": user_id,
         "access_token": credentials.credentials,
         "subscription_status": user.subscription_status,
+        "timezone": user.timezone,
     }
 
 

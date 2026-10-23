@@ -23,6 +23,7 @@ def _tool_context(current_user: dict) -> ToolContext:
     return ToolContext(
         user_id=current_user["user_id"],
         subscription_status=current_user["subscription_status"],
+        timezone=current_user.get("timezone"),
     )
 
 

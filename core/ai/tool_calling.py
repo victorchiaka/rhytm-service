@@ -30,7 +30,7 @@ from core.utils import (
 
 logger = logging.getLogger(__name__)
 
-DAY_RANGE = "days must be numbers 0-6 (0=Sunday, 6=Saturday)"
+DAY_RANGE = "days must be numbers 0-6 (0=Monday, 6=Sunday)"
 MAX_ROUTINES_PER_PERIOD = 3
 HABIT_MINS = 15  # duration estimate per habit, same as the routine service
 
@@ -65,7 +65,7 @@ CHECK_ROUTINE_PLAN = Tool(
             "frequency": {
                 "type": "array",
                 "items": {"type": "integer", "minimum": 0, "maximum": 6},
-                "description": "Days the routine runs: 0=Sunday ... 6=Saturday.",
+                "description": "Days the routine runs: 0=Monday ... 6=Sunday.",
             },
             "habits": {
                 "type": "array",
@@ -122,7 +122,7 @@ UPDATE_ROUTINE = Tool(
             "frequency": {
                 "type": "array",
                 "items": {"type": "integer", "minimum": 0, "maximum": 6},
-                "description": "New days: 0=Sunday ... 6=Saturday.",
+                "description": "New days: 0=Monday ... 6=Sunday.",
             },
             "habits": {
                 "type": "array",
@@ -161,7 +161,7 @@ UPDATE_HABIT = Tool(
             "days_of_week": {
                 "type": "array",
                 "items": {"type": "integer", "minimum": 0, "maximum": 6},
-                "description": "New days: 0=Sunday ... 6=Saturday.",
+                "description": "New days: 0=Monday ... 6=Sunday.",
             },
             "reminder_time": {
                 "type": "string",
@@ -298,6 +298,7 @@ async def _update_habit(args: dict, ctx: ToolContext, db: AsyncSession) -> dict:
         ctx.subscription_status,
         UpdateHabitRequest(name=name, days_of_week=days, reminder_time=reminder),
         db,
+        tz=ctx.timezone,
     )
     return {
         "updated": True,
@@ -721,6 +722,7 @@ async def _resolve_habit_id(
         ctx.subscription_status,
         CreateHabitRequest(name=name, days_of_week=days, reminder_time=reminder),
         db,
+        tz=ctx.timezone,
     )
     return habit.id
 

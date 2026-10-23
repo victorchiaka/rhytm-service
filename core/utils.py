@@ -1,6 +1,7 @@
 import os
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import resend
 from dotenv import load_dotenv
@@ -14,19 +15,29 @@ EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 templates = Jinja2Templates(directory="core/templates")
 
 DAY_NAMES = {
-    0: "SU",
-    1: "M",
-    2: "T",
-    3: "W",
-    4: "TH",
-    5: "F",
-    6: "S",
+    0: "M",
+    1: "T",
+    2: "W",
+    3: "TH",
+    4: "F",
+    5: "S",
+    6: "SU",
 }
 
 
 def fmt_days(day_ints: list[int]) -> str:
     """Convert a list of day integers to a readable string, e.g. 'M, W, F'."""
     return ", ".join(DAY_NAMES[d] for d in sorted(day_ints))
+
+
+def today_in(tz_name: str | None = None) -> date:
+    """Current date in the given IANA timezone; falls back to UTC."""
+    if tz_name:
+        try:
+            return datetime.now(ZoneInfo(tz_name)).date()
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return datetime.now(UTC).date()
 
 
 PERIOD_BOUNDS = {
@@ -126,10 +137,14 @@ def send_welcome_mail(to_mail: str, name: str):
 
 
 def generate_activity_grid(
-    habit_id: str, activity_dates: set[date], scope: str = "MONTH"
+    habit_id: str,
+    activity_dates: set[date],
+    scope: str = "MONTH",
+    base_date: date | None = None,
+    tz: str | None = None,
 ) -> dict:
     """Generate a dense grid (ActivityLogResponse dict format) from raw dates."""
-    base_date = datetime.now(UTC).date()
+    base_date = base_date or today_in(tz)
     scope = scope.upper()
 
     if scope == "MONTH":
@@ -148,10 +163,7 @@ def generate_activity_grid(
 
     while current_date <= grid_end_date:
         current_week_days = []
-        week_start_dt = datetime(
-            current_date.year, current_date.month, current_date.day, tzinfo=timezone.utc
-        )
-        week_timestamp = int(week_start_dt.timestamp())
+        week_start = current_date.isoformat()  # Monday of this week row
 
         total = 0
         for _ in range(7):
@@ -170,7 +182,7 @@ def generate_activity_grid(
             current_date += timedelta(days=1)
 
         weeks.append(
-            {"week": week_timestamp, "days": current_week_days, "total": total}
+            {"week": week_start, "days": current_week_days, "total": total}
         )
 
     return {
@@ -182,12 +194,14 @@ def generate_activity_grid(
     }
 
 
-def get_activity_window(subscription_status: str = "basic") -> tuple[date, date]:
+def get_activity_window(
+    subscription_status: str = "basic", tz: str | None = None
+) -> tuple[date, date]:
     """Return the (from_date, to_date) window for activity grids.
 
     Subscribed users get YEAR scope, basic users get MONTH.
     """
-    base_date = datetime.now(UTC).date()
+    base_date = today_in(tz)
     if subscription_status not in ("basic", None):
         return base_date.replace(month=1, day=1), base_date.replace(month=12, day=31)
     from_date = base_date.replace(day=1)
@@ -196,7 +210,9 @@ def get_activity_window(subscription_status: str = "basic") -> tuple[date, date]
     return from_date, to_date
 
 
-def attach_activity(habits: list, subscription_status: str = "basic") -> list:
+def attach_activity(
+    habits: list, subscription_status: str = "basic", tz: str | None = None
+) -> list:
     """Attach the dense activity grid to a list of HabitResponse-like objects.
 
     Subscribed users get YEAR scope, basic users get MONTH.
@@ -204,7 +220,7 @@ def attach_activity(habits: list, subscription_status: str = "basic") -> list:
     scope = "YEAR" if subscription_status not in ("basic", None) else "MONTH"
     for habit in habits:
         dates = {log.activity_date for log in habit.activity_logs}
-        habit.activity = generate_activity_grid(habit.id, dates, scope)
+        habit.activity = generate_activity_grid(habit.id, dates, scope, tz=tz)
     return habits
 
 
@@ -213,9 +229,10 @@ def generate_user_activity_grid(
     activity_dates: set[date],
     scope: str = "MONTH",
     base_date: date | None = None,
+    tz: str | None = None,
 ) -> dict:
     """Generate a dense user grid (UserActivityLogResponse dict format) from raw dates."""
-    base_date = base_date or datetime.now(UTC).date()
+    base_date = base_date or today_in(tz)
     scope = scope.upper()
 
     if scope == "MONTH":
@@ -234,10 +251,7 @@ def generate_user_activity_grid(
 
     while current_date <= grid_end_date:
         current_week_days = []
-        week_start_dt = datetime(
-            current_date.year, current_date.month, current_date.day, tzinfo=timezone.utc
-        )
-        week_timestamp = int(week_start_dt.timestamp())
+        week_start = current_date.isoformat()  # Monday of this week row
 
         total = 0
         for _ in range(7):
@@ -256,7 +270,7 @@ def generate_user_activity_grid(
             current_date += timedelta(days=1)
 
         weeks.append(
-            {"week": week_timestamp, "days": current_week_days, "total": total}
+            {"week": week_start, "days": current_week_days, "total": total}
         )
 
     return {
@@ -274,14 +288,15 @@ def attach_user_activity(user, subscription_status: str = "basic") -> dict:
     Subscribed users get YEAR scope, basic users get MONTH.
     """
     scope = "YEAR" if subscription_status not in ("basic", None) else "MONTH"
-    from_date, to_date = get_activity_window(subscription_status)
+    tz = getattr(user, "timezone", None)
+    from_date, to_date = get_activity_window(subscription_status, tz)
     all_logs = getattr(user, "activity_logs", [])
     dates = {
         log.activity_date
         for log in all_logs
         if from_date <= log.activity_date <= to_date
     }
-    grid = generate_user_activity_grid(user.id, dates, scope)
+    grid = generate_user_activity_grid(user.id, dates, scope, tz=tz)
     user.activity = grid
     return grid
 

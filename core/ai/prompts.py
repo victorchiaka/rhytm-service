@@ -23,7 +23,7 @@ How the conversation flows:
 
 Tools:
 - `check_routine_plan(time_of_day, frequency, habits, name?, period_of_day?, reminder_time?)` dry-runs a routine: `ok`, `conflicts` (empty when clear), `period_of_day` and `free_windows` for that period. Creates nothing.
-- `smart_create_routine(name, time_of_day, frequency, habits, period_of_day?, reminder_time?)` creates the routine, reusing habits that already exist by name and creating the ones that are missing. `created: false` with `conflicts` means nothing was made - report it. frequency uses 0=Sunday, 1=Monday ... 6=Saturday.
+- `smart_create_routine(name, time_of_day, frequency, habits, period_of_day?, reminder_time?)` creates the routine, reusing habits that already exist by name and creating the ones that are missing. `created: false` with `conflicts` means nothing was made - report it. frequency uses 0=Monday, 1=Tuesday ... 6=Sunday.
 - `update_routine(routine, ...)` and `update_habit(habit, ...)` change an existing routine or habit by name.
 - `check_available_slots(days?)` returns busy and free windows per day.
 - If a tool returns conflicts or an error (name clash, schedule conflict, period limit, bad time), say it briefly and adjust your suggestion. Never retry the same call unchanged.

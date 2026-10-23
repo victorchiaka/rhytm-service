@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -38,6 +38,7 @@ from core.utils import (
     send_email_otp,
     send_reset_password_email,
     send_welcome_mail,
+    today_in,
 )
 from db.database import AsyncSessionLocal
 
@@ -50,7 +51,7 @@ RESET_PASSWORD_OTP_EXPIRY_SECONDS = 600
 
 ENVIRONMENT = str(os.getenv("ENVIRONMENT"))
 
-_DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+_DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 _MOCK_ROUTINE_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 _MOCK_ROUTINE_2_ID = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
@@ -76,7 +77,7 @@ def _build_mock_export_data() -> dict:
         name="Evening Wind-down",
         period_of_day="Evening",
         time_of_day="21:00",
-        frequency=[1, 2, 3, 4, 5],
+        frequency=[0, 1, 2, 3, 4],
     )
 
     drink_water = SimpleNamespace(
@@ -90,14 +91,14 @@ def _build_mock_export_data() -> dict:
         id=_MOCK_HABIT_2_ID,
         name="Stretch",
         reminder_time="07:30",
-        days_of_week=[1, 2, 3, 4, 5],
+        days_of_week=[0, 1, 2, 3, 4],
         routines=[morning_routine],
     )
     workout = SimpleNamespace(
         id=_MOCK_HABIT_3_ID,
         name="Home Workout",
         reminder_time="21:30",
-        days_of_week=[1, 3, 5],
+        days_of_week=[0, 2, 4],
         routines=[evening_routine],
     )
     journal = SimpleNamespace(
@@ -121,12 +122,12 @@ def _build_mock_export_data() -> dict:
     today = datetime.now(UTC).date()
     for offset in range(_MOCK_LOG_WINDOW_DAYS):
         day = today - timedelta(days=offset)
-        weekday = (day.weekday() + 1) % 7  # 0 = Sunday, matches Habit.days_of_week
+        weekday = day.weekday()  # 0 = Monday, matches Habit.days_of_week
 
         logs.append(SimpleNamespace(habit_id=drink_water.id, activity_date=day))
-        if weekday in (1, 2, 3, 4, 5) and offset % 9 != 0:
+        if weekday in (0, 1, 2, 3, 4) and offset % 9 != 0:
             logs.append(SimpleNamespace(habit_id=stretch.id, activity_date=day))
-        if weekday in (1, 3, 5) and offset % 14 != 0:
+        if weekday in (0, 2, 4) and offset % 14 != 0:
             logs.append(SimpleNamespace(habit_id=workout.id, activity_date=day))
         if offset % 3 != 0:
             logs.append(SimpleNamespace(habit_id=journal.id, activity_date=day))
@@ -321,20 +322,20 @@ class UserService:
     def _weekday_counts(
         window_start: date | None, window_end: date | None
     ) -> list[int] | None:
-        """Occurrences of each weekday (index 0 = Sun) in [window_start, window_end]."""
+        """Occurrences of each weekday (index 0 = Mon) in [window_start, window_end]."""
         if window_start is None or window_end is None or window_end < window_start:
             return None
         total_days = (window_end - window_start).days + 1
         full_weeks, remainder = divmod(total_days, 7)
         counts = [full_weeks] * 7
-        first = (window_start.weekday() + 1) % 7
+        first = window_start.weekday()
         for offset in range(remainder):
             counts[(first + offset) % 7] += 1
         return counts
 
     @staticmethod
     def _build_performance_stats(user, routines, habits, logs) -> dict:
-        today = datetime.now(UTC).date()
+        today = today_in(getattr(user, "timezone", None))
         cutoff_7 = today - timedelta(days=6)
         cutoff_30 = today - timedelta(days=29)
 
@@ -352,7 +353,7 @@ class UserService:
             log_counts[habit_id] = log_counts.get(habit_id, 0) + 1
             habit_dates.setdefault(habit_id, set()).add(day)
             all_dates.add(day)
-            by_weekday[(day.weekday() + 1) % 7] += 1
+            by_weekday[day.weekday()] += 1
             month_key = f"{day.year:04d}-{day.month:02d}"
             by_month[month_key] = by_month.get(month_key, 0) + 1
             if day >= cutoff_30:
@@ -624,7 +625,12 @@ class UserService:
         )
 
     async def initiate_signup(
-        self, email: str, full_name: str, db: AsyncSession, rdb: Redis
+        self,
+        email: str,
+        full_name: str,
+        timezone: str | None,
+        db: AsyncSession,
+        rdb: Redis,
     ) -> dict:
         normalized_email = email.lower()
         result = await db.execute(select(User).where(User.email == normalized_email))
@@ -642,6 +648,7 @@ class UserService:
             "full_name": full_name,
             "email": normalized_email,
             "otp": otp,
+            "timezone": timezone,
         }
         await rdb.set(redis_key, json.dumps(signup_data), ex=SIGNUP_OTP_EXPIRY_SECONDS)
 
@@ -697,6 +704,7 @@ class UserService:
             full_name=data["full_name"],
             email=normalized_email,
             password=hash_password(password),
+            timezone=data.get("timezone"),
         )
         db.add(new_user)
         await db.commit()
@@ -732,9 +740,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return {
@@ -778,9 +786,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return {
@@ -1010,9 +1018,9 @@ class UserService:
             habits = habits[:2]
             user.habits = habits
 
-        attach_activity(habits, user.subscription_status)
+        attach_activity(habits, user.subscription_status, tz=user.timezone)
         for r in user.routines:
-            attach_activity(list(r.habits), user.subscription_status)
+            attach_activity(list(r.habits), user.subscription_status, tz=user.timezone)
         attach_user_activity(user, user.subscription_status)
 
         return UserResponse.model_validate(user).model_dump()
@@ -1024,6 +1032,7 @@ class UserService:
         scope: str | None,
         target_date: str | None,
         db: AsyncSession,
+        tz: str | None = None,
     ) -> UserActivityLogResponse:
         try:
             user_uuid = UUID(str(user_id))
@@ -1057,7 +1066,7 @@ class UserService:
                     detail="Invalid date format. Use YYYY-MM-DD",
                 )
         else:
-            base_date = datetime.now(timezone.utc).date()
+            base_date = today_in(tz)
 
         if scope == "MONTH":
             from_date = base_date.replace(day=1)
