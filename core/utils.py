@@ -14,13 +14,13 @@ EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 templates = Jinja2Templates(directory="core/templates")
 
 DAY_NAMES = {
-    0: "SU",
-    1: "M",
-    2: "T",
-    3: "W",
-    4: "TH",
-    5: "F",
-    6: "S",
+    0: "M",
+    1: "T",
+    2: "W",
+    3: "TH",
+    4: "F",
+    5: "S",
+    6: "SU",
 }
 
 

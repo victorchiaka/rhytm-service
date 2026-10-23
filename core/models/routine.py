@@ -76,7 +76,7 @@ class Routine(Base):
         nullable=False,
     )
     # Days of the week this routine runs.
-    # Integers 0–6 where 0 = Sunday, 1 = Monday … 6 = Saturday.
+    # Integers 0–6 where 0 = Monday, 1 = Tuesday … 6 = Sunday.
     # Matches the same convention used on Habit.days_of_week.
     frequency = Column(ARRAY(Integer), nullable=False, server_default="{}")
     deleted_at = Column(DateTime(timezone=True), nullable=True)
