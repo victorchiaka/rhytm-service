@@ -1,3 +1,5 @@
+from typing import Any, Mapping
+
 from fastapi import APIRouter, Depends, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +15,7 @@ from core.schemas.user import (
     UserActivityLogResponse,
     UserResponse,
 )
-from core.security import get_current_user, require_pro_user
+from core.security import current_user, require_pro_user
 from core.services.user import UserService
 from db.database import get_db
 from db.rdb import get_rdb
@@ -94,15 +96,13 @@ async def reset_password(
 @auth_router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     payload: LogoutRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-    rdb: Redis = Depends(get_rdb),
 ):
     return await user_service.logout(
-        access_token=current_user["access_token"],
+        user_id=str(current_user["id"]),
         refresh_token=payload.refresh_token,
         db=db,
-        rdb=rdb,
     )
 
 
@@ -116,10 +116,10 @@ async def refresh_tokens(
 
 @users_router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
 async def get_profile(
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await user_service.get_profile(user_id=current_user["user_id"], db=db)
+    return await user_service.get_profile(user_id=str(current_user["id"]), db=db)
 
 
 @users_router.get(
@@ -131,11 +131,11 @@ async def get_profile(
 async def get_user_activity(
     scope: str | None = None,
     date: str | None = None,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserActivityLogResponse:
     return await user_service.get_user_activity(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         subscription_status=current_user.get("subscription_status", "basic"),
         scope=scope,
         target_date=date,
@@ -146,27 +146,24 @@ async def get_user_activity(
 
 @users_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-    rdb: Redis = Depends(get_rdb),
 ):
     await user_service.delete_account(
-        user_id=current_user["user_id"],
-        access_token=current_user["access_token"],
+        user_id=str(current_user["id"]),
         db=db,
-        rdb=rdb,
     )
 
 
 @users_router.post("/export/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate_export(
     format: str,  # "pdf" or "excel"
-    current_user: dict = Depends(require_pro_user),
+    current_user: Mapping[str, Any] = Depends(require_pro_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
     return await user_service.generate_export(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         format=format,
         db=db,
         rdb=rdb,
@@ -176,11 +173,11 @@ async def generate_export(
 @users_router.get("/export/download/{job_id}", status_code=status.HTTP_200_OK)
 async def download_export(
     job_id: str,
-    current_user: dict = Depends(require_pro_user),
+    current_user: Mapping[str, Any] = Depends(require_pro_user),
     rdb: Redis = Depends(get_rdb),
 ):
     return await user_service.download_export(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         job_id=job_id,
         rdb=rdb,
     )
