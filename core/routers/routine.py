@@ -8,6 +8,7 @@ from core.schemas.routine import (
     ConfirmDeleteResponse,
     CreateRoutineRequest,
     DeleteCheckResponse,
+    RoutineActionResponse,
     RoutineResponse,
     UndoDeleteResponse,
     UpdateRoutineRequest,
@@ -135,7 +136,7 @@ async def create_routine(
     payload: CreateRoutineRequest,
     current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoutineResponse:
+) -> RoutineActionResponse:
     return await routine_service.create_routine(
         user_id=str(current_user["id"]),
         payload=payload,
@@ -157,7 +158,7 @@ async def update_routine(
     payload: UpdateRoutineRequest,
     current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoutineResponse:
+) -> RoutineActionResponse:
     return await routine_service.update_routine(
         id=id,
         user_id=str(current_user["id"]),

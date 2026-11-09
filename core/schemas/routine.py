@@ -63,6 +63,11 @@ class RoutineResponse(RoutineShape):
     pass
 
 
+class RoutineActionResponse(BaseModel):
+    message: str
+    routine: RoutineResponse
+
+
 class OtherRoutineInfo(BaseModel):
     id: UUID
     name: str
@@ -77,6 +82,7 @@ class SharedHabitInfo(BaseModel):
 
 
 class DeleteCheckResponse(BaseModel):
+    message: str
     routine_id: UUID
     routine_name: str
     exclusive_habits: list[HabitResponse]
@@ -85,6 +91,7 @@ class DeleteCheckResponse(BaseModel):
 
 
 class ConfirmDeleteResponse(BaseModel):
+    message: str
     deletion_id: UUID
     routine_id: UUID
     mode: str

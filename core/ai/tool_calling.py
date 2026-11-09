@@ -222,7 +222,7 @@ async def _smart_create_routine(args: dict, ctx: ToolContext, db: AsyncSession) 
         )
         for habit_name in plan.habits
     ]
-    routine = await RoutineService().create_routine(
+    res = await RoutineService().create_routine(
         ctx.user_id,
         CreateRoutineRequest(
             name=plan.name,
@@ -233,6 +233,7 @@ async def _smart_create_routine(args: dict, ctx: ToolContext, db: AsyncSession) 
         ),
         db,
     )
+    routine = res.get("routine", res)
     return {"created": True, **_routine_view(routine)}
 
 
@@ -261,7 +262,7 @@ async def _update_routine(args: dict, ctx: ToolContext, db: AsyncSession) -> dic
         )
         for habit_name in plan.habits
     ]
-    routine = await RoutineService().update_routine(
+    res = await RoutineService().update_routine(
         ctx.user_id,
         str(current.id),
         CreateRoutineRequest(
@@ -273,6 +274,7 @@ async def _update_routine(args: dict, ctx: ToolContext, db: AsyncSession) -> dic
         ),
         db,
     )
+    routine = res.get("routine", res)
     return {"updated": True, **_routine_view(routine)}
 
 
@@ -830,14 +832,14 @@ def _habit_names(args: dict) -> list[str]:
     )
 
 
-def _routine_view(routine: RoutineResponse) -> dict:
+def _routine_view(routine: dict) -> dict:
     return {
-        "routine_id": str(routine.id),
-        "name": routine.name,
-        "time_of_day": routine.time_of_day,
-        "period_of_day": routine.period_of_day,
-        "frequency": routine.frequency,
-        "habits": [habit.name for habit in routine.habits],
+        "routine_id": str(routine["id"]),
+        "name": routine["name"],
+        "time_of_day": routine["time_of_day"],
+        "period_of_day": routine["period_of_day"],
+        "frequency": routine["frequency"],
+        "habits": [h["name"] for h in routine.get("habits", [])],
     }
 
 

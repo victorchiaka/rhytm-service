@@ -48,7 +48,6 @@ ROUTINE_MESSAGES = SimpleNamespace(
     DELETE_CHECK_SUCCESS="Routine deletion check completed.",
 )
 
-
 HABIT_MESSAGES = SimpleNamespace(
     CREATED="Habit created successfully.",
     UPDATED="Habit updated successfully.",
