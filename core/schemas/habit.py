@@ -64,6 +64,11 @@ class HabitResponse(HabitShape):
     pass
 
 
+class HabitActionResponse(BaseModel):
+    message: str
+    habit: HabitResponse
+
+
 class DeleteHabitResponse(BaseModel):
     message: str
 

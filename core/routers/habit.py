@@ -1,3 +1,5 @@
+from typing import Any, Mapping
+
 from fastapi import APIRouter, Depends, Query, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,12 +9,13 @@ from core.schemas.habit import (
     CheckInRequest,
     CreateHabitRequest,
     DeleteHabitResponse,
+    HabitActionResponse,
     HabitResponse,
     SyncActivityRequest,
     SyncActivityResponse,
     UpdateHabitRequest,
 )
-from core.security import get_current_user
+from core.security import current_user
 from core.services.habit import HabitService
 from db.database import get_db
 from db.rdb import get_rdb
@@ -32,11 +35,11 @@ habit_service = HabitService()
 )
 async def create_habit(
     payload: CreateHabitRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> HabitResponse:
+) -> HabitActionResponse:
     return await habit_service.create_habit(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
@@ -46,10 +49,11 @@ async def create_habit(
 
 @habits_router.get("/all")
 async def get_all(
-    current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Mapping[str, Any] = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     return await habit_service.get_all(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         subscription_status=current_user["subscription_status"],
         db=db,
         tz=current_user.get("timezone"),
@@ -61,11 +65,11 @@ async def get_all(
 )
 async def get_today_habits(
     day: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[HabitResponse]:
     return await habit_service.get_by_day(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         day_digit=day,
         subscription_status=current_user["subscription_status"],
         db=db,
@@ -80,11 +84,11 @@ async def get_today_habits(
 )
 async def sync_activity(
     payload: SyncActivityRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SyncActivityResponse:
     return await habit_service.sync_activity(
-        user_id=current_user["user_id"], payload=payload, db=db
+        user_id=str(current_user["id"]), payload=payload, db=db
     )
 
 
@@ -93,11 +97,11 @@ async def sync_activity(
 )
 async def get_habit(
     id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HabitResponse:
     return await habit_service.get_habit(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         habit_id=id,
         subscription_status=current_user["subscription_status"],
         db=db,
@@ -114,12 +118,12 @@ async def get_habit_activity(
     id: str,
     scope: str,
     date: str | None = None,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ActivityLogResponse:
     return await habit_service.get_activity_log(
         habit_id=id,
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         scope=scope,
         target_date=date,
         db=db,
@@ -135,13 +139,13 @@ async def get_habit_activity(
 async def check_in_habit(
     id: str,
     payload: CheckInRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
     return await habit_service.check_in(
         habit_id=id,
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         payload=payload,
         db=db,
         rdb=rdb,
@@ -158,13 +162,13 @@ async def undo_check_in_habit(
     id: str,
     payload: CheckInRequest,
     undo_token: str = Query(..., description="Undo token returned from habit check-in"),
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ):
     return await habit_service.undo_check_in(
         habit_id=id,
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         payload=payload,
         undo_token=undo_token,
         db=db,
@@ -185,12 +189,12 @@ async def undo_check_in_habit(
 async def update_habit(
     id: str,
     payload: UpdateHabitRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> HabitResponse:
+) -> HabitActionResponse:
     return await habit_service.update_habit(
         habit_id=id,
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         subscription_status=current_user["subscription_status"],
         payload=payload,
         db=db,
@@ -205,9 +209,9 @@ async def update_habit(
 )
 async def delete_habit(
     id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeleteHabitResponse:
     return await habit_service.delete_habit(
-        habit_id=id, user_id=current_user["user_id"], db=db
+        habit_id=id, user_id=str(current_user["id"]), db=db
     )

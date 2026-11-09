@@ -25,11 +25,11 @@ from core.models.routine import Routine
 from core.models.user import Session, User, UserActivityLog
 from core.schemas.user import UserActivityLogResponse, UserResponse
 from core.security import (
-    create_token,
+    check_password,
     decode_token,
+    generate_tokens,
     hash_password,
     hash_token,
-    verify_password,
 )
 from core.utils import (
     attach_activity,
@@ -146,17 +146,14 @@ MOCK_EXPORT_DATA = _build_mock_export_data()
 
 class UserService:
     @staticmethod
-    def _issue_tokens(user_id, email) -> tuple[str, str]:
-        """Create a fresh access + refresh token pair."""
-        token_payload = {"sub": str(user_id), "email": email}
-        access_token = create_token(data=token_payload, token_type="access")
-        refresh_token = create_token(data=token_payload, token_type="refresh")
-        return access_token, refresh_token
-
-    @staticmethod
     async def _persist_session(db: AsyncSession, user_id, refresh_token: str) -> None:
         """Decode the refresh token and store a hashed session row."""
-        decoded_refresh = decode_token(refresh_token, expected_type="refresh")
+        decoded_refresh = decode_token(refresh_token, "refresh")
+        if not decoded_refresh:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=USER_MESSAGES.INVALID_TOKEN,
+            )
         refresh_exp = datetime.fromtimestamp(decoded_refresh["exp"], tz=UTC)
 
         session_entry = Session(
@@ -210,9 +207,11 @@ class UserService:
                     entry["checkins"],
                     entry["current_streak"],
                     entry["longest_streak"],
-                    round(entry["completion"], 1)
-                    if entry["completion"] is not None
-                    else "",
+                    (
+                        round(entry["completion"], 1)
+                        if entry["completion"] is not None
+                        else ""
+                    ),
                     str(entry["last_checkin"]) if entry["last_checkin"] else "",
                 ]
             )
@@ -244,12 +243,32 @@ class UserService:
 
         UserService._write_performance_sheet(wb.create_sheet("Performance", 1), stats)
         ws_routines = wb.create_sheet("Routines")
-        ws_routines.append(["Routine name", "Period", "Time", "Days", "Habit", "Reminder", "Habit Days"])
+        ws_routines.append(
+            [
+                "Routine name",
+                "Period",
+                "Time",
+                "Days",
+                "Habit",
+                "Reminder",
+                "Habit Days",
+            ]
+        )
         for r in routines:
             freq = UserService._format_days(r.frequency) if r.frequency else "None"
             for h in habits_by_routine.get(r.id, ()):
                 days = UserService._format_days(h.days_of_week)
-                ws_routines.append([r.name, UserService._period_label(r.period_of_day), r.time_of_day, freq, h.name, str(h.reminder_time or "None"), days])
+                ws_routines.append(
+                    [
+                        r.name,
+                        UserService._period_label(r.period_of_day),
+                        r.time_of_day,
+                        freq,
+                        h.name,
+                        str(h.reminder_time or "None"),
+                        days,
+                    ]
+                )
 
         ws_habits = wb.create_sheet("Standalone Habits")
         ws_habits.append(["Habit name", "Reminder", "Days"])
@@ -419,9 +438,13 @@ class UserService:
             "by_weekday": by_weekday,
             "by_month": sorted(by_month.items()),
             "habit_stats": habit_stats,
-            "member_since": created_at.date() if isinstance(created_at, datetime) else created_at,
+            "member_since": (
+                created_at.date() if isinstance(created_at, datetime) else created_at
+            ),
             "plan": getattr(user, "plan", None),
-            "plan_expires_at": expires_at.date() if isinstance(expires_at, datetime) else expires_at,
+            "plan_expires_at": (
+                expires_at.date() if isinstance(expires_at, datetime) else expires_at
+            ),
         }
 
     @staticmethod
@@ -429,7 +452,9 @@ class UserService:
         if not entry["checkins"]:
             return f"{entry['name']}: 0 check-ins (no activity yet)"
         parts = [f"{entry['name']}: {entry['checkins']} check-ins"]
-        parts.append(f"streak {entry['current_streak']}d/best {entry['longest_streak']}d")
+        parts.append(
+            f"streak {entry['current_streak']}d/best {entry['longest_streak']}d"
+        )
         if entry["completion"] is not None:
             parts.append(f"completion {entry['completion']:.0f}%")
         if entry["last_checkin"]:
@@ -437,7 +462,12 @@ class UserService:
         return " | ".join(parts)
 
     @staticmethod
-    async def _generate_pdf_bytes(user: User, routines: list[Routine], habits: list[Habit], logs: list[ActivityLog]):
+    async def _generate_pdf_bytes(
+        user: User,
+        routines: list[Routine],
+        habits: list[Habit],
+        logs: list[ActivityLog],
+    ):
         stats = UserService._build_performance_stats(user, routines, habits, logs)
         habits_by_routine, standalone_habits = UserService._group_habits(habits)
         pdf = FPDF()
@@ -466,10 +496,20 @@ class UserService:
         for r in routines:
             freq = UserService._format_days(r.frequency) if r.frequency else "None"
             period = UserService._period_label(r.period_of_day)
-            pdf.cell(200, 10, text=f"  {r.name} ({period}, {r.time_of_day}) - Days: {freq}", ln=True)
+            pdf.cell(
+                200,
+                10,
+                text=f"  {r.name} ({period}, {r.time_of_day}) - Days: {freq}",
+                ln=True,
+            )
             for h in habits_by_routine.get(r.id, ()):
                 days = UserService._format_days(getattr(h, "days_of_week", None) or [])
-                pdf.cell(200, 10, text=f"    - {h.name} (Reminder: {h.reminder_time or 'None'}, Days: {days})", ln=True)
+                pdf.cell(
+                    200,
+                    10,
+                    text=f"    - {h.name} (Reminder: {h.reminder_time or 'None'}, Days: {days})",
+                    ln=True,
+                )
         pdf.ln(5)
 
         pdf.set_font("Arial", style="B", size=14)
@@ -477,24 +517,59 @@ class UserService:
         pdf.set_font("Arial", size=12)
         for h in standalone_habits:
             days = UserService._format_days(getattr(h, "days_of_week", None) or [])
-            pdf.cell(200, 10, text=f"- {h.name} (Reminder: {h.reminder_time or 'None'}, Days: {days})", ln=True)
+            pdf.cell(
+                200,
+                10,
+                text=f"- {h.name} (Reminder: {h.reminder_time or 'None'}, Days: {days})",
+                ln=True,
+            )
         pdf.ln(5)
 
         pdf.set_font("Arial", style="B", size=14)
         pdf.cell(200, 10, text="Performance Summary:", ln=True)
         pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, text=f"  Routines: {stats['routines']} | Habits: {stats['habits']} (Standalone: {stats['standalone_habits']})", ln=True)
+        pdf.cell(
+            200,
+            10,
+            text=f"  Routines: {stats['routines']} | Habits: {stats['habits']} (Standalone: {stats['standalone_habits']})",
+            ln=True,
+        )
         if stats["window_start"]:
             span = (stats["window_end"] - stats["window_start"]).days + 1
-            pdf.cell(200, 10, text=f"  Active Days: {stats['active_days']} (of {span}-day activity range)", ln=True)
-        pdf.cell(200, 10, text=f"  Check-ins (last 7 days): {stats['last_7']} | (last 30 days): {stats['last_30']}", ln=True)
-        pdf.cell(200, 10, text=f"  Current Streak: {stats['current_streak']} days | Longest Streak: {stats['longest_streak']} days", ln=True)
+            pdf.cell(
+                200,
+                10,
+                text=f"  Active Days: {stats['active_days']} (of {span}-day activity range)",
+                ln=True,
+            )
+        pdf.cell(
+            200,
+            10,
+            text=f"  Check-ins (last 7 days): {stats['last_7']} | (last 30 days): {stats['last_30']}",
+            ln=True,
+        )
+        pdf.cell(
+            200,
+            10,
+            text=f"  Current Streak: {stats['current_streak']} days | Longest Streak: {stats['longest_streak']} days",
+            ln=True,
+        )
         if stats["overall_completion"] is not None:
-            pdf.cell(200, 10, text=f"  Overall Completion Rate: {stats['overall_completion']}%", ln=True)
+            pdf.cell(
+                200,
+                10,
+                text=f"  Overall Completion Rate: {stats['overall_completion']}%",
+                ln=True,
+            )
         pdf.ln(5)
 
         pdf.set_font("Arial", style="B", size=14)
-        pdf.cell(200, 10, text=f"Total Lifetime Check-ins: {stats['total_checkins']}", ln=True)
+        pdf.cell(
+            200,
+            10,
+            text=f"Total Lifetime Check-ins: {stats['total_checkins']}",
+            ln=True,
+        )
         pdf.ln(3)
 
         if stats["habit_stats"]:
@@ -502,7 +577,9 @@ class UserService:
             pdf.cell(200, 10, text="Check-ins by Habit:", ln=True)
             pdf.set_font("Arial", size=12)
             for entry in stats["habit_stats"]:
-                pdf.cell(200, 10, text=f"  {UserService._habit_stat_line(entry)}", ln=True)
+                pdf.cell(
+                    200, 10, text=f"  {UserService._habit_stat_line(entry)}", ln=True
+                )
         pdf.ln(3)
 
         if stats["window_start"]:
@@ -510,7 +587,8 @@ class UserService:
             pdf.cell(200, 10, text="Activity by Day of Week:", ln=True)
             pdf.set_font("Arial", size=12)
             weekday_line = "  " + " | ".join(
-                f"{name}: {count}" for name, count in zip(_DAY_NAMES, stats["by_weekday"])
+                f"{name}: {count}"
+                for name, count in zip(_DAY_NAMES, stats["by_weekday"])
             )
             pdf.cell(200, 10, text=weekday_line, ln=True)
             pdf.ln(3)
@@ -523,7 +601,12 @@ class UserService:
             pdf.ln(3)
 
             pdf.set_font("Arial", size=12)
-            pdf.cell(200, 10, text=f"Activity Range: {stats['window_start']} to {stats['window_end']}", ln=True)
+            pdf.cell(
+                200,
+                10,
+                text=f"Activity Range: {stats['window_start']} to {stats['window_end']}",
+                ln=True,
+            )
 
         return pdf.output()
 
@@ -544,17 +627,25 @@ class UserService:
                     logs = MOCK_EXPORT_DATA["logs"]
                 else:
                     routines = (
-                        await bg_db.execute(
-                            select(Routine).where(Routine.user_id == user_id)
+                        (
+                            await bg_db.execute(
+                                select(Routine).where(Routine.user_id == user_id)
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     habits = (
-                        await bg_db.execute(
-                            select(Habit)
-                            .where(Habit.user_id == user_id)
-                            .options(selectinload(Habit.routines))
+                        (
+                            await bg_db.execute(
+                                select(Habit)
+                                .where(Habit.user_id == user_id)
+                                .options(selectinload(Habit.routines))
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     logs = (
                         await bg_db.execute(
                             select(ActivityLog.habit_id, ActivityLog.activity_date)
@@ -569,7 +660,9 @@ class UserService:
                 )
                 filename = f"rhytm_export_{datetime.now(UTC).date()}.xlsx"
             else:
-                file_bytes = await UserService._generate_pdf_bytes(user, routines, habits, logs)
+                file_bytes = await UserService._generate_pdf_bytes(
+                    user, routines, habits, logs
+                )
                 filename = f"rhytm_export_{datetime.now(UTC).date()}.pdf"
             await rdb.setex(name=file_key, time=300, value=file_bytes)
             await rdb.setex(
@@ -595,24 +688,37 @@ class UserService:
 
         raw_meta_data = await rdb.get(meta_key)
         if not raw_meta_data:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_MESSAGES.EXPORT_NOT_FOUND)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=USER_MESSAGES.EXPORT_NOT_FOUND,
+            )
 
         meta_data = json.loads(raw_meta_data)
         if meta_data.get("status") == "failed":
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=USER_MESSAGES.EXPORT_GENERATION_FAILED)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=USER_MESSAGES.EXPORT_GENERATION_FAILED,
+            )
 
         if meta_data.get("status") == "processing":
-            raise HTTPException(status_code=status.HTTP_202_ACCEPTED, detail=USER_MESSAGES.EXPORT_STILL_PROCESSING)
+            raise HTTPException(
+                status_code=status.HTTP_202_ACCEPTED,
+                detail=USER_MESSAGES.EXPORT_STILL_PROCESSING,
+            )
 
         file_bytes = await rdb.get(file_key)
         if not file_bytes:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=USER_MESSAGES.EXPORT_NOT_FOUND)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=USER_MESSAGES.EXPORT_NOT_FOUND,
+            )
 
         await rdb.delete(meta_key)
         await rdb.delete(file_key)
 
         content_type = (
-            "application/pdf" if meta_data.get("format") == "pdf" 
+            "application/pdf"
+            if meta_data.get("format") == "pdf"
             else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
@@ -728,8 +834,8 @@ class UserService:
 
         await rdb.delete(redis_key)
 
-        access_token, refresh_token = self._issue_tokens(user.id, user.email)
-        await self._persist_session(db, user.id, refresh_token)
+        access, refresh = generate_tokens(str(user.id))
+        await self._persist_session(db, user.id, refresh)
 
         if ENVIRONMENT == "prod":
             send_welcome_mail(to_mail=normalized_email, name=user.full_name)
@@ -748,8 +854,8 @@ class UserService:
         return {
             "message": USER_MESSAGES.ACCOUNT_CREATED,
             "tokens": {
-                "access": access_token,
-                "refresh": refresh_token,
+                "access": access,
+                "refresh": refresh,
             },
             "user": UserResponse.model_validate(user).model_dump(),
         }
@@ -771,14 +877,14 @@ class UserService:
             .where(User.email == normalized_email)
         )
         user = result.scalar_one_or_none()
-        if not user or not verify_password(password, user.password):
+        if not user or not check_password(password, user.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=USER_MESSAGES.INVALID_CREDENTIALS,
             )
 
-        access_token, refresh_token = self._issue_tokens(user.id, user.email)
-        await self._persist_session(db, user.id, refresh_token)
+        access, refresh = generate_tokens(str(user.id))
+        await self._persist_session(db, user.id, refresh)
 
         habits = list(user.habits)
         if user.subscription_status != "pro":
@@ -794,10 +900,10 @@ class UserService:
         return {
             "message": USER_MESSAGES.LOGIN_SUCCESS,
             "tokens": {
-                "access": access_token,
-                "refresh": refresh_token,
+                "access": access,
+                "refresh": refresh,
             },
-            "user": UserResponse.model_validate(user).model_dump()
+            "user": UserResponse.model_validate(user).model_dump(),
         }
 
     async def request_password_reset(
@@ -822,8 +928,6 @@ class UserService:
             redis_key, json.dumps(reset_data), ex=RESET_PASSWORD_OTP_EXPIRY_SECONDS
         )
 
-        # Log OTP to console for now
-        # TODO: Set up email OTP sending service (SMTP / SendGrid / Resend / AWS SES)
         logger.info(f"[RESET PASSWORD OTP] OTP for {normalized_email} is: {otp}")
 
         if ENVIRONMENT == "prod":
@@ -836,7 +940,7 @@ class UserService:
         else:
             logger.info(f"[RESET PASSWORD OTP] OTP for {normalized_email} is: {otp}")
 
-        message = USER_MESSAGES.OTP_SENT  if ENVIRONMENT == "prod" else "Dev otp is 0000"
+        message = USER_MESSAGES.OTP_SENT if ENVIRONMENT == "prod" else "Dev otp is 0000"
 
         return {"message": message}
 
@@ -882,34 +986,27 @@ class UserService:
 
     async def logout(
         self,
-        access_token: str,
+        user_id: str,
         refresh_token: str,
         db: AsyncSession,
-        rdb: Redis,
     ) -> dict:
-        try:
-            access_payload = decode_token(access_token, expected_type="access")
-        except jwt.PyJWTError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=USER_MESSAGES.INVALID_TOKEN,
-            )
+        session_expired = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=USER_MESSAGES.SESSION_EXPIRED,
+        )
 
-        try:
-            refresh_payload = decode_token(refresh_token, expected_type="refresh")
-        except jwt.PyJWTError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=USER_MESSAGES.INVALID_TOKEN,
-            )
+        invalid_token = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=USER_MESSAGES.INVALID_TOKEN,
+        )
 
-        now = datetime.now(UTC)
-        refresh_exp_ts = refresh_payload.get("exp")
-        if not refresh_exp_ts or datetime.fromtimestamp(refresh_exp_ts, tz=UTC) <= now:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=USER_MESSAGES.INVALID_TOKEN,
-            )
+        payload = decode_token(refresh_token, expected_type="refresh")
+
+        if payload is None:
+            raise session_expired
+
+        if str(user_id) != str(payload.get("sub")):
+            raise invalid_token
 
         token_hash = hash_token(refresh_token)
         result = await db.execute(
@@ -917,79 +1014,51 @@ class UserService:
         )
         session_entry = result.scalar_one_or_none()
         if not session_entry:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=USER_MESSAGES.SESSION_EXPIRED,
-            )
-
-        if session_entry.expires_at <= now:
-            await db.delete(session_entry)
-            await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=USER_MESSAGES.SESSION_EXPIRED,
-            )
+            raise session_expired
 
         await db.delete(session_entry)
         await db.commit()
 
-        access_exp = access_payload.get("exp")
-        if access_exp and access_exp > now.timestamp():
-            ttl = int(access_exp - now.timestamp())
-            await rdb.set(f"blacklisted_token:{access_token}", "blacklisted", ex=ttl)
-
         return {"message": USER_MESSAGES.LOGOUT_SUCCESS}
 
     async def refresh_tokens(self, refresh_token: str, db: AsyncSession) -> dict:
-        try:
-            refresh_payload = decode_token(refresh_token, expected_type="refresh")
-        except jwt.PyJWTError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=USER_MESSAGES.INVALID_TOKEN,
-            )
-
-        now = datetime.now(UTC)
-        refresh_exp_ts = refresh_payload.get("exp")
-        if not refresh_exp_ts or datetime.fromtimestamp(refresh_exp_ts, tz=UTC) <= now:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=USER_MESSAGES.INVALID_TOKEN,
-            )
-
-        token_hash = hash_token(refresh_token)
-        result = await db.execute(
-            select(Session).where(Session.refresh_token_hash == token_hash)
+        invalid_token = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=USER_MESSAGES.INVALID_TOKEN,
         )
-        session_entry = result.scalar_one_or_none()
-        if not session_entry:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=USER_MESSAGES.SESSION_EXPIRED,
-            )
 
-        if session_entry.expires_at <= now:
-            await db.delete(session_entry)
-            await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=USER_MESSAGES.SESSION_EXPIRED,
-            )
+        old_refresh_token_hash = hash_token(refresh_token)
+        old_session_query = await db.execute(
+            select(Session)
+            .where(Session.refresh_token_hash == old_refresh_token_hash)
+            .with_for_update()
+        )
 
-        await db.delete(session_entry)
+        old_session_entry = old_session_query.scalar_one_or_none()
+        if not old_session_entry:
+            raise invalid_token
 
-        user_id = refresh_payload.get("sub")
-        email = refresh_payload.get("email")
+        payload = decode_token(refresh_token, expected_type="refresh")
+        if not payload:
+            raise invalid_token
 
-        new_access_token, new_refresh_token = self._issue_tokens(user_id, email)
-        await self._persist_session(db, session_entry.user_id, new_refresh_token)
+        user_id = payload.get("sub")
+
+        if str(old_session_entry.user_id) != str(user_id):
+            raise invalid_token
+
+        access, refresh = generate_tokens(str(user_id))
+
+        await self._persist_session(db, user_id, refresh)
+        await db.delete(old_session_entry)
+        await db.commit()
 
         return {
             "message": USER_MESSAGES.TOKEN_REFRESH_SUCCESS,
             "tokens": {
-                "access": new_access_token,
-                "refresh": new_refresh_token,
-            }
+                "access": access,
+                "refresh": refresh,
+            },
         }
 
     async def get_profile(self, user_id: str, db: AsyncSession) -> dict:
@@ -1094,7 +1163,9 @@ class UserService:
         return UserActivityLogResponse(**grid_data)
 
     async def delete_account(
-        self, user_id: str, access_token: str, db: AsyncSession, rdb: Redis
+        self,
+        user_id: str,
+        db: AsyncSession,
     ) -> None:
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
@@ -1107,18 +1178,6 @@ class UserService:
         await db.execute(delete(Session).where(Session.user_id == user.id))
         await db.delete(user)
         await db.commit()
-
-        try:
-            access_payload = decode_token(access_token, expected_type="access")
-            access_exp = access_payload.get("exp")
-            now = datetime.now(UTC)
-            if access_exp and access_exp > now.timestamp():
-                ttl = int(access_exp - now.timestamp())
-                await rdb.set(
-                    f"blacklisted_token:{access_token}", "blacklisted", ex=ttl
-                )
-        except jwt.PyJWTError:
-            pass
 
     async def generate_export(
         self,
@@ -1155,4 +1214,8 @@ class UserService:
             UserService._process_export_task(user_id, job_id, format, meta_key, rdb)
         )
 
-        return {"message": "Export generation started", "job_id": job_id, "status": "processing"}
+        return {
+            "message": "Export generation started",
+            "job_id": job_id,
+            "status": "processing",
+        }

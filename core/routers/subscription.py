@@ -1,8 +1,10 @@
+from typing import Any, Mapping
+
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.schemas.subscription import BenefitsResponse, InitiateSubscriptionRequest
-from core.security import get_current_user
+from core.security import current_user
 from core.services.subscription_service import SubscriptionService
 from db.database import get_db
 
@@ -20,11 +22,11 @@ async def get_benefits():
 @subscriptions_router.post("/initiate", status_code=status.HTTP_200_OK)
 async def initiate_subscription(
     payload: InitiateSubscriptionRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await subscription_service.initiate_subscription(
-        user_id=current_user["user_id"], plan=payload.plan, db=db
+        user_id=str(current_user["id"]), plan=payload.plan, db=db
     )
 
 

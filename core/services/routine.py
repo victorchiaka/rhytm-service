@@ -13,13 +13,10 @@ from core.models.habit import Habit
 from core.models.routine import Deletion, DeletionMode, PeriodOfDay, Routine
 from core.schemas.habit import HabitResponse
 from core.schemas.routine import (
-    ConfirmDeleteResponse,
     CreateRoutineRequest,
-    DeleteCheckResponse,
     OtherRoutineInfo,
     RoutineResponse,
     SharedHabitInfo,
-    UndoDeleteResponse,
 )
 from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
 
@@ -243,7 +240,6 @@ class RoutineService:
                     ),
                 )
 
-
         return habits
 
     @staticmethod
@@ -272,9 +268,9 @@ class RoutineService:
             select(Routine)
             .where(Routine.id == new_routine.id)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
         )
         return refreshed_result.scalar_one()
@@ -284,7 +280,7 @@ class RoutineService:
         user_id: str,
         payload: CreateRoutineRequest,
         db: AsyncSession,
-    ) -> RoutineResponse:
+    ) -> dict:
         """Create a new routine and link existing habits to it."""
         frequency: list[int] = sorted(set(payload.frequency))
         period: PeriodOfDay = payload.period_of_day
@@ -315,33 +311,41 @@ class RoutineService:
             habits=habits,
         )
 
-        return RoutineResponse.model_validate(routine)
+        return {
+            "message": ROUTINE_MESSAGES.CREATED,
+            "routine": RoutineResponse.model_validate(routine).model_dump(),
+        }
 
     async def get_all(self, user_id: str, db: AsyncSession) -> list[RoutineResponse]:
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
             .where(Routine.user_id == user_id, Routine.deleted_at.is_(None))
         )
         routines = result.scalars().all()
         return [RoutineResponse.model_validate(r) for r in routines]
 
-    async def get_by_day(self, user_id: str, day_digit: int, db: AsyncSession) -> list[RoutineResponse]:
+    async def get_by_day(
+        self, user_id: str, day_digit: int, db: AsyncSession
+    ) -> list[RoutineResponse]:
+        invalid_day = HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=ROUTINE_MESSAGES.INVALID_DAY_DIGIT,
+        )
+
         if day_digit not in range(7):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=ROUTINE_MESSAGES.INVALID_DAY_DIGIT,
-            )
+            raise invalid_day
+
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
             .where(
                 Routine.user_id == user_id,
@@ -352,20 +356,25 @@ class RoutineService:
         routines = result.scalars().all()
         return [RoutineResponse.model_validate(r) for r in routines]
 
-    async def get_routine(self, user_id: str, routine_id: str, db: AsyncSession) -> RoutineResponse:
+    async def get_routine(
+        self, user_id: str, routine_id: str, db: AsyncSession
+    ) -> RoutineResponse:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ROUTINE_MESSAGES.NOT_FOUND,
+        )
+
         try:
             routine_uuid = UUID(routine_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
+
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
             .where(
                 Routine.id == routine_uuid,
@@ -375,10 +384,8 @@ class RoutineService:
         )
         routine = result.scalar_one_or_none()
         if not routine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
+
         return RoutineResponse.model_validate(routine)
 
     async def update_routine(
@@ -387,21 +394,24 @@ class RoutineService:
         id: str,
         payload: CreateRoutineRequest,
         db: AsyncSession,
-    ) -> RoutineResponse:
+    ) -> dict:
         """Update an existing routine and re-evaluate all guardrail checks."""
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ROUTINE_MESSAGES.NOT_FOUND,
+        )
+
         try:
             routine_uuid = UUID(id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
+
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
             .where(
                 Routine.id == routine_uuid,
@@ -411,10 +421,7 @@ class RoutineService:
         )
         routine = result.scalars().first()
         if not routine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
 
         frequency: list[int] = sorted(set(payload.frequency))
         period: PeriodOfDay = payload.period_of_day
@@ -458,33 +465,40 @@ class RoutineService:
             select(Routine)
             .where(Routine.id == routine.id)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None))).selectinload(
-                    Habit.activity_logs
-                )
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs)
             )
         )
         updated_routine = refreshed_result.scalar_one()
 
-        return RoutineResponse.model_validate(updated_routine)
+        return {
+            "message": ROUTINE_MESSAGES.UPDATED,
+            "routine": RoutineResponse.model_validate(updated_routine).model_dump(),
+        }
 
     async def check_routine_deletion(
         self, user_id: str, routine_id: str, db: AsyncSession, rdb: Redis
-    ) -> DeleteCheckResponse:
+    ) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ROUTINE_MESSAGES.NOT_FOUND,
+        )
+
         try:
             routine_uuid = UUID(routine_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         result = await db.execute(
             select(Routine)
             .options(
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
-                .selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))),
-                selectinload(Routine.habits.and_(Habit.deleted_at.is_(None)))
-                .selectinload(Habit.activity_logs),
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))),
+                selectinload(
+                    Routine.habits.and_(Habit.deleted_at.is_(None))
+                ).selectinload(Habit.activity_logs),
             )
             .where(
                 Routine.id == routine_uuid,
@@ -494,20 +508,14 @@ class RoutineService:
         )
         routine = result.scalar_one_or_none()
         if not routine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
 
         exclusive_habits: list[HabitResponse] = []
         shared_habits: list[SharedHabitInfo] = []
         exclusive_habit_ids: list[str] = []
 
         for habit in routine.habits:
-            active_other_routines = [
-                r for r in habit.routines
-                if r.id != routine.id
-            ]
+            active_other_routines = [r for r in habit.routines if r.id != routine.id]
             habit_resp = HabitResponse.model_validate(habit)
             if not active_other_routines:
                 exclusive_habits.append(habit_resp)
@@ -529,13 +537,14 @@ class RoutineService:
         }
         await rdb.set(f"delete_token:{token}", json.dumps(snapshot_payload), ex=300)
 
-        return DeleteCheckResponse(
-            routine_id=routine.id,
-            routine_name=routine.name,
-            exclusive_habits=exclusive_habits,
-            shared_habits=shared_habits,
-            token=token,
-        )
+        return {
+            "message": ROUTINE_MESSAGES.DELETE_CHECK_SUCCESS,
+            "routine_id": routine.id,
+            "routine_name": routine.name,
+            "exclusive_habits": [h.model_dump() for h in exclusive_habits],
+            "shared_habits": [s.model_dump() for s in shared_habits],
+            "token": token,
+        }
 
     async def confirm_routine_deletion(
         self,
@@ -545,39 +554,44 @@ class RoutineService:
         token: str | None,
         db: AsyncSession,
         rdb: Redis,
-    ) -> ConfirmDeleteResponse:
+    ) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ROUTINE_MESSAGES.NOT_FOUND,
+        )
+        invalid_mode = HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid deletion mode.",
+        )
+        invalid_token_422 = HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=ROUTINE_MESSAGES.INVALID_DELETE_TOKEN,
+        )
+        invalid_token_400 = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ROUTINE_MESSAGES.INVALID_DELETE_TOKEN,
+        )
+
         try:
             routine_uuid = UUID(routine_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         if mode not in (DeletionMode.ROUTINE_ONLY.value, DeletionMode.EXCLUSIVE.value):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid deletion mode.",
-            )
+            raise invalid_mode
 
         if mode == DeletionMode.EXCLUSIVE.value:
             if not token:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=ROUTINE_MESSAGES.INVALID_DELETE_TOKEN,
-                )
+                raise invalid_token_422
             raw_snapshot = await rdb.get(f"delete_token:{token}")
             if not raw_snapshot:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=ROUTINE_MESSAGES.INVALID_DELETE_TOKEN,
-                )
+                raise invalid_token_400
             snapshot = json.loads(raw_snapshot)
-            if snapshot.get("routine_id") != str(routine_uuid) or snapshot.get("user_id") != user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=ROUTINE_MESSAGES.INVALID_DELETE_TOKEN,
-                )
+            if (
+                snapshot.get("routine_id") != str(routine_uuid)
+                or snapshot.get("user_id") != user_id
+            ):
+                raise invalid_token_400
 
         result = await db.execute(
             select(Routine)
@@ -595,10 +609,7 @@ class RoutineService:
         )
         routine = result.scalar_one_or_none()
         if not routine:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
 
         if routine.deleted_at is not None:
             if routine.deletion_id:
@@ -612,18 +623,16 @@ class RoutineService:
                         for h in routine.habits
                         if h.deletion_id == deletion_rec.id
                     ]
-                    return ConfirmDeleteResponse(
-                        deletion_id=deletion_rec.id,
-                        routine_id=routine.id,
-                        mode=deletion_rec.mode.value,
-                        habits_deleted_count=len(deleted_habits),
-                        deleted_habits=deleted_habits,
-                        undo_deadline=deletion_rec.deadline,
-                    )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.NOT_FOUND,
-            )
+                    return {
+                        "message": ROUTINE_MESSAGES.DELETION_CONFIRMED,
+                        "deletion_id": deletion_rec.id,
+                        "routine_id": routine.id,
+                        "mode": deletion_rec.mode.value,
+                        "habits_deleted_count": len(deleted_habits),
+                        "deleted_habits": [h.model_dump() for h in deleted_habits],
+                        "undo_deadline": deletion_rec.deadline,
+                    }
+            raise not_found
 
         now_utc = datetime.now(timezone.utc)
         deadline = now_utc + timedelta(seconds=14)
@@ -646,10 +655,7 @@ class RoutineService:
             for habit in routine.habits:
                 if habit.deleted_at is not None:
                     continue
-                other_active = [
-                    r for r in habit.routines
-                    if r.id != routine.id
-                ]
+                other_active = [r for r in habit.routines if r.id != routine.id]
                 if not other_active:
                     habit.deleted_at = now_utc
                     habit.deletion_id = deletion_rec.id
@@ -660,25 +666,32 @@ class RoutineService:
         if token:
             await rdb.delete(f"delete_token:{token}")
 
-        return ConfirmDeleteResponse(
-            deletion_id=deletion_rec.id,
-            routine_id=routine.id,
-            mode=mode,
-            habits_deleted_count=len(deleted_habits),
-            deleted_habits=deleted_habits,
-            undo_deadline=deadline,
-        )
+        return {
+            "message": ROUTINE_MESSAGES.DELETION_CONFIRMED,
+            "deletion_id": deletion_rec.id,
+            "routine_id": routine.id,
+            "mode": mode,
+            "habits_deleted_count": len(deleted_habits),
+            "deleted_habits": [h.model_dump() for h in deleted_habits],
+            "undo_deadline": deadline,
+        }
 
     async def undo_deletion(
         self, user_id: str, deletion_id: str, db: AsyncSession
-    ) -> UndoDeleteResponse:
+    ) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ROUTINE_MESSAGES.DELETION_NOT_FOUND,
+        )
+        undo_expired = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ROUTINE_MESSAGES.UNDO_EXPIRED,
+        )
+
         try:
             del_uuid = UUID(deletion_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.DELETION_NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         del_result = await db.execute(
             select(Deletion).where(
@@ -688,17 +701,11 @@ class RoutineService:
         )
         deletion_rec = del_result.scalar_one_or_none()
         if not deletion_rec:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.DELETION_NOT_FOUND,
-            )
+            raise not_found
 
         now_utc = datetime.now(timezone.utc)
         if now_utc > deletion_rec.deadline:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ROUTINE_MESSAGES.UNDO_EXPIRED,
-            )
+            raise undo_expired
 
         r_result = await db.execute(
             select(Routine)
@@ -710,9 +717,7 @@ class RoutineService:
             routine.deleted_at = None
             routine.deletion_id = None
 
-        h_result = await db.execute(
-            select(Habit).where(Habit.deletion_id == del_uuid)
-        )
+        h_result = await db.execute(select(Habit).where(Habit.deletion_id == del_uuid))
         habits = h_result.scalars().all()
         for habit in habits:
             habit.deleted_at = None
@@ -734,13 +739,11 @@ class RoutineService:
                     .where(Routine.id == restored_routine.id)
                 )
             ).scalar_one()
-            return UndoDeleteResponse(
-                message=ROUTINE_MESSAGES.UNDO_SUCCESS,
-                restored_routine=RoutineResponse.model_validate(refreshed),
-            )
+            return {
+                "message": ROUTINE_MESSAGES.UNDO_SUCCESS,
+                "restored_routine": RoutineResponse.model_validate(
+                    refreshed
+                ).model_dump(),
+            }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ROUTINE_MESSAGES.DELETION_NOT_FOUND,
-            )
-
+            raise not_found

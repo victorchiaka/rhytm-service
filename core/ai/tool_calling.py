@@ -222,7 +222,7 @@ async def _smart_create_routine(args: dict, ctx: ToolContext, db: AsyncSession) 
         )
         for habit_name in plan.habits
     ]
-    routine = await RoutineService().create_routine(
+    res = await RoutineService().create_routine(
         ctx.user_id,
         CreateRoutineRequest(
             name=plan.name,
@@ -233,6 +233,7 @@ async def _smart_create_routine(args: dict, ctx: ToolContext, db: AsyncSession) 
         ),
         db,
     )
+    routine = res.get("routine", res)
     return {"created": True, **_routine_view(routine)}
 
 
@@ -261,7 +262,7 @@ async def _update_routine(args: dict, ctx: ToolContext, db: AsyncSession) -> dic
         )
         for habit_name in plan.habits
     ]
-    routine = await RoutineService().update_routine(
+    res = await RoutineService().update_routine(
         ctx.user_id,
         str(current.id),
         CreateRoutineRequest(
@@ -273,6 +274,7 @@ async def _update_routine(args: dict, ctx: ToolContext, db: AsyncSession) -> dic
         ),
         db,
     )
+    routine = res.get("routine", res)
     return {"updated": True, **_routine_view(routine)}
 
 
@@ -292,7 +294,7 @@ async def _update_habit(args: dict, ctx: ToolContext, db: AsyncSession) -> dict:
     if conflicts:
         return {"updated": False, "ok": False, "conflicts": conflicts}
 
-    habit = await HabitService().update_habit(
+    res = await HabitService().update_habit(
         str(current.id),
         ctx.user_id,
         ctx.subscription_status,
@@ -300,14 +302,23 @@ async def _update_habit(args: dict, ctx: ToolContext, db: AsyncSession) -> dict:
         db,
         tz=ctx.timezone,
     )
+    habit = res.get("habit", res)
+    habit_id = habit.get("id") if isinstance(habit, dict) else habit.id
+    name_val = habit.get("name") if isinstance(habit, dict) else habit.name
+    reminder_val = (
+        habit.get("reminder_time") if isinstance(habit, dict) else habit.reminder_time
+    )
+    days_val = (
+        habit.get("days_of_week") if isinstance(habit, dict) else habit.days_of_week
+    )
     return {
         "updated": True,
         "ok": True,
         "habit": {
-            "habit_id": str(habit.id),
-            "name": habit.name,
-            "reminder_time": habit.reminder_time,
-            "days_of_week": habit.days_of_week,
+            "habit_id": str(habit_id),
+            "name": name_val,
+            "reminder_time": reminder_val,
+            "days_of_week": days_val,
         },
     }
 
@@ -630,7 +641,9 @@ async def _active_habits(ctx: ToolContext, db: AsyncSession) -> list[Habit]:
         (
             await db.execute(
                 select(Habit)
-                .options(selectinload(Habit.routines.and_(Routine.deleted_at.is_(None))))
+                .options(
+                    selectinload(Habit.routines.and_(Routine.deleted_at.is_(None)))
+                )
                 .where(Habit.user_id == ctx.user_id, Habit.deleted_at.is_(None))
             )
         )
@@ -717,14 +730,16 @@ async def _resolve_habit_id(
     if existing:
         return existing.id
 
-    habit = await HabitService().create_habit(
+    res = await HabitService().create_habit(
         ctx.user_id,
         ctx.subscription_status,
         CreateHabitRequest(name=name, days_of_week=days, reminder_time=reminder),
         db,
         tz=ctx.timezone,
     )
-    return habit.id
+    habit = res.get("habit", res)
+    habit_id = habit.get("id") if isinstance(habit, dict) else habit.id
+    return UUID(str(habit_id))
 
 
 # --- execution -------------------------------------------------------------
@@ -817,14 +832,14 @@ def _habit_names(args: dict) -> list[str]:
     )
 
 
-def _routine_view(routine: RoutineResponse) -> dict:
+def _routine_view(routine: dict) -> dict:
     return {
-        "routine_id": str(routine.id),
-        "name": routine.name,
-        "time_of_day": routine.time_of_day,
-        "period_of_day": routine.period_of_day,
-        "frequency": routine.frequency,
-        "habits": [habit.name for habit in routine.habits],
+        "routine_id": str(routine["id"]),
+        "name": routine["name"],
+        "time_of_day": routine["time_of_day"],
+        "period_of_day": routine["period_of_day"],
+        "frequency": routine["frequency"],
+        "habits": [h["name"] for h in routine.get("habits", [])],
     }
 
 

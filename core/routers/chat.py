@@ -1,3 +1,4 @@
+from typing import Any, Mapping
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.ai.base import ToolContext
 from core.schemas.chat import SendMessageRequest
-from core.security import get_current_user, require_pro_user
+from core.security import current_user, require_pro_user
 from core.services.chat import ChatService
 from db.database import get_db
 
@@ -19,9 +20,9 @@ chat_router = APIRouter(
 chat_service = ChatService()
 
 
-def _tool_context(current_user: dict) -> ToolContext:
+def _tool_context(current_user: Mapping[str, Any]) -> ToolContext:
     return ToolContext(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         subscription_status=current_user["subscription_status"],
         timezone=current_user.get("timezone"),
     )
@@ -37,11 +38,11 @@ def _tool_context(current_user: dict) -> ToolContext:
 )
 async def send(
     payload: SendMessageRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     conversation_id = await chat_service.prepare(
-        payload=payload, user_id=current_user["user_id"], db=db
+        payload=payload, user_id=str(current_user["id"]), db=db
     )
     return StreamingResponse(
         chat_service.stream(
@@ -64,10 +65,10 @@ async def send(
     description="Lists the user's conversations, newest first.",
 )
 async def list_conversations(
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await chat_service.list_conversations(current_user["user_id"], db)
+    return await chat_service.list_conversations(str(current_user["id"]), db)
 
 
 @chat_router.get(
@@ -77,11 +78,11 @@ async def list_conversations(
 )
 async def get_conversation(
     conversation_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await chat_service.get_conversation(
-        conversation_id, current_user["user_id"], db
+        conversation_id, str(current_user["id"]), db
     )
 
 
@@ -92,9 +93,9 @@ async def get_conversation(
 )
 async def delete_conversation(
     conversation_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await chat_service.delete_conversation(
-        conversation_id, current_user["user_id"], db
+        conversation_id, str(current_user["id"]), db
     )

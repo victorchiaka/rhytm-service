@@ -1,3 +1,5 @@
+from typing import Any, Mapping
+
 from fastapi import APIRouter, Depends, Query, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,11 +8,12 @@ from core.schemas.routine import (
     ConfirmDeleteResponse,
     CreateRoutineRequest,
     DeleteCheckResponse,
+    RoutineActionResponse,
     RoutineResponse,
     UndoDeleteResponse,
     UpdateRoutineRequest,
 )
-from core.security import get_current_user, require_pro_user
+from core.security import current_user, require_pro_user
 from core.services.routine import RoutineService
 from db.database import get_db
 from db.rdb import get_rdb
@@ -26,9 +29,10 @@ routine_service = RoutineService()
 
 @routines_router.get("/all", status_code=status.HTTP_200_OK)
 async def get_all(
-    current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Mapping[str, Any] = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> list[RoutineResponse]:
-    return await routine_service.get_all(user_id=current_user["user_id"], db=db)
+    return await routine_service.get_all(user_id=str(current_user["id"]), db=db)
 
 
 @routines_router.get(
@@ -38,11 +42,11 @@ async def get_all(
 )
 async def get_today_routines(
     day: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[RoutineResponse]:
     return await routine_service.get_by_day(
-        user_id=current_user["user_id"], day_digit=day, db=db
+        user_id=str(current_user["id"]), day_digit=day, db=db
     )
 
 
@@ -51,11 +55,11 @@ async def get_today_routines(
 )
 async def get_routine(
     id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RoutineResponse:
     return await routine_service.get_routine(
-        user_id=current_user["user_id"], routine_id=id, db=db
+        user_id=str(current_user["id"]), routine_id=id, db=db
     )
 
 
@@ -66,12 +70,12 @@ async def get_routine(
 )
 async def check_routine_deletion(
     id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ) -> DeleteCheckResponse:
     return await routine_service.check_routine_deletion(
-        user_id=current_user["user_id"], routine_id=id, db=db, rdb=rdb
+        user_id=str(current_user["id"]), routine_id=id, db=db, rdb=rdb
     )
 
 
@@ -90,12 +94,12 @@ async def confirm_routine_deletion(
         default=None,
         description="Redis deletion check token (required for exclusive mode)",
     ),
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     rdb: Redis = Depends(get_rdb),
 ) -> ConfirmDeleteResponse:
     return await routine_service.confirm_routine_deletion(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         routine_id=id,
         mode=mode,
         token=token,
@@ -111,11 +115,11 @@ async def confirm_routine_deletion(
 )
 async def undo_deletion(
     id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UndoDeleteResponse:
     return await routine_service.undo_deletion(
-        user_id=current_user["user_id"], deletion_id=id, db=db
+        user_id=str(current_user["id"]), deletion_id=id, db=db
     )
 
 
@@ -130,11 +134,11 @@ async def undo_deletion(
 )
 async def create_routine(
     payload: CreateRoutineRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoutineResponse:
+) -> RoutineActionResponse:
     return await routine_service.create_routine(
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         payload=payload,
         db=db,
     )
@@ -152,12 +156,12 @@ async def create_routine(
 async def update_routine(
     id: str,
     payload: UpdateRoutineRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> RoutineResponse:
+) -> RoutineActionResponse:
     return await routine_service.update_routine(
         id=id,
-        user_id=current_user["user_id"],
+        user_id=str(current_user["id"]),
         payload=payload,
         db=db,
     )
