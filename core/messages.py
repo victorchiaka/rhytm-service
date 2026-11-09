@@ -60,9 +60,14 @@ HABIT_MESSAGES = SimpleNamespace(
     REMINDER_OUT_OF_PERIOD="'{habit_name}' ({reminder_time}) is outside '{routine_name}' ({period}).",
     REMINDER_TOO_EARLY="'{habit_name}' is {diff_mins}m earlier than '{routine_name}' ({start}).",
     INVALID_DAY_DIGIT="Day must be between 0 (Monday) and 6 (Sunday).",
+    INVALID_DATE_FORMAT="Invalid date format. Use YYYY-MM-DD",
     UNDO_EXPIRED="Undo window has expired.",
     INVALID_UNDO_TOKEN="Invalid or expired undo token.",
     FREE_LIMIT_REACHED="Upgrade to pro to create more habits.",
+    SYNC_SUCCESSFUL="Sync successful",
+    UNDO_CHECK_IN_SUCCESSFUL="Undo check-in successful",
+    CHECK_IN_SUCCESSFUL="Check-in successful",
+    INVALID_SCOPE="Scope must be MONTH or YEAR",
 )
 
 SUBSCRIPTION_MESSAGES = SimpleNamespace(

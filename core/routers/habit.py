@@ -9,6 +9,7 @@ from core.schemas.habit import (
     CheckInRequest,
     CreateHabitRequest,
     DeleteHabitResponse,
+    HabitActionResponse,
     HabitResponse,
     SyncActivityRequest,
     SyncActivityResponse,
@@ -36,7 +37,7 @@ async def create_habit(
     payload: CreateHabitRequest,
     current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> HabitResponse:
+) -> HabitActionResponse:
     return await habit_service.create_habit(
         user_id=str(current_user["id"]),
         subscription_status=current_user["subscription_status"],
@@ -190,7 +191,7 @@ async def update_habit(
     payload: UpdateHabitRequest,
     current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> HabitResponse:
+) -> HabitActionResponse:
     return await habit_service.update_habit(
         habit_id=id,
         user_id=str(current_user["id"]),

@@ -15,11 +15,9 @@ from core.schemas.habit import (
     ActivityLogResponse,
     CheckInRequest,
     CreateHabitRequest,
-    DeleteHabitResponse,
     HabitResponse,
     SyncActionEnum,
     SyncActivityRequest,
-    SyncActivityResponse,
     UpdateHabitRequest,
 )
 from core.utils import (
@@ -144,7 +142,12 @@ class HabitService:
         payload: CreateHabitRequest,
         db: AsyncSession,
         tz: str | None = None,
-    ) -> HabitResponse:
+    ) -> dict:
+        free_limit_reached = HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=HABIT_MESSAGES.FREE_LIMIT_REACHED,
+        )
+
         if subscription_status != "pro":
             count_result = await db.execute(
                 select(func.count(Habit.id)).where(
@@ -154,10 +157,7 @@ class HabitService:
             )
             habit_count = count_result.scalar_one()
             if habit_count >= 2:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=HABIT_MESSAGES.FREE_LIMIT_REACHED,
-                )
+                raise free_limit_reached
 
         habit_days = sorted(set(payload.days_of_week))
         await self._check_reminder_conflict(
@@ -174,7 +174,10 @@ class HabitService:
         await db.refresh(new_habit, ["activity_logs"])
         habit = HabitResponse.model_validate(new_habit)
         attach_activity([habit], subscription_status, tz=tz)
-        return habit
+        return {
+            "message": HABIT_MESSAGES.CREATED,
+            "habit": habit.model_dump(),
+        }
 
     async def get_all(
         self,
@@ -212,11 +215,14 @@ class HabitService:
         db: AsyncSession,
         tz: str | None = None,
     ) -> list[HabitResponse]:
+        invalid_day = HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
+        )
+
         if day_digit not in range(7):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=HABIT_MESSAGES.INVALID_DAY_DIGIT,
-            )
+            raise invalid_day
+
         from_date, to_date = get_activity_window(subscription_status, tz)
         query = (
             select(Habit)
@@ -250,13 +256,16 @@ class HabitService:
         db: AsyncSession,
         tz: str | None = None,
     ) -> HabitResponse:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=HABIT_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
+
         from_date, to_date = get_activity_window(subscription_status, tz)
         result = await db.execute(
             select(Habit)
@@ -276,10 +285,8 @@ class HabitService:
         )
         habit = result.scalar_one_or_none()
         if not habit:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=HABIT_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
+
         habit_resp = HabitResponse.model_validate(habit)
         attach_activity([habit_resp], subscription_status, tz=tz)
         return habit_resp
@@ -292,15 +299,18 @@ class HabitService:
         payload: UpdateHabitRequest,
         db: AsyncSession,
         tz: str | None = None,
-    ) -> HabitResponse:
+    ) -> dict:
         """Update an existing habit and evaluate standalone & routine compatibility guardrails."""
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=HABIT_MESSAGES.NOT_FOUND,
-            )
+        except (ValueError, TypeError):
+            raise not_found
+
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines), selectinload(Habit.activity_logs))
@@ -312,10 +322,8 @@ class HabitService:
         )
         habit = result.scalars().first()
         if not habit:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=HABIT_MESSAGES.NOT_FOUND,
-            )
+            raise not_found
+
         habit_days = sorted(set(payload.days_of_week))
         await self._check_reminder_conflict(
             db, user_id, payload.reminder_time, habit_days, exclude_habit_id=habit_uuid
@@ -328,6 +336,7 @@ class HabitService:
         habit.reminder_time = payload.reminder_time
         habit.days_of_week = habit_days
         await db.commit()
+
         from_date, to_date = get_activity_window(subscription_status, tz)
         refreshed_result = await db.execute(
             select(Habit)
@@ -344,17 +353,22 @@ class HabitService:
         habit = refreshed_result.scalar_one()
         habit_resp = HabitResponse.model_validate(habit)
         attach_activity([habit_resp], subscription_status, tz=tz)
-        return habit_resp
+        return {
+            "message": HABIT_MESSAGES.UPDATED,
+            "habit": habit_resp.model_dump(),
+        }
 
-    async def delete_habit(
-        self, habit_id: str, user_id: str, db: AsyncSession
-    ) -> DeleteHabitResponse:
+    async def delete_habit(self, habit_id: str, user_id: str, db: AsyncSession) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+        except (ValueError, TypeError):
+            raise not_found
+
         result = await db.execute(
             select(Habit)
             .options(selectinload(Habit.routines).selectinload(Routine.habits))
@@ -366,9 +380,8 @@ class HabitService:
         )
         habit = result.scalars().first()
         if not habit:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+            raise not_found
+
         # Routines that only have this habit in them are deleted with it
         active_routines = [r for r in habit.routines if r.deleted_at is None]
         orphaned_routines = [
@@ -382,13 +395,13 @@ class HabitService:
         await db.delete(habit)
         await db.commit()
 
-        return DeleteHabitResponse(
-            message=(
+        return {
+            "message": (
                 HABIT_MESSAGES.HABIT_AND_ROUTINES_DELETED
                 if orphaned_routines
                 else HABIT_MESSAGES.DELETED
             )
-        )
+        }
 
     async def get_activity_log(
         self,
@@ -399,12 +412,23 @@ class HabitService:
         db: AsyncSession,
         tz: str | None = None,
     ) -> ActivityLogResponse:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+        invalid_date = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.INVALID_DATE_FORMAT,
+        )
+        invalid_scope = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.INVALID_SCOPE,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         habit_check = await db.execute(
             select(Habit.id).where(
@@ -414,17 +438,13 @@ class HabitService:
             )
         )
         if not habit_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+            raise not_found
 
         if target_date:
             try:
                 base_date = datetime.strptime(target_date, "%Y-%m-%d").date()
             except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-                )
+                raise invalid_date
         else:
             base_date = today_in(tz)
 
@@ -432,7 +452,7 @@ class HabitService:
 
         scope = scope.upper()
         if scope not in ("MONTH", "YEAR"):
-            raise HTTPException(status_code=400, detail="Scope must be MONTH or YEAR")
+            raise invalid_scope
 
         base_date = base_date or today_in(tz)
         if scope == "MONTH":
@@ -459,17 +479,14 @@ class HabitService:
 
     async def sync_activity(
         self, user_id: str, payload: SyncActivityRequest, db: AsyncSession
-    ) -> SyncActivityResponse:
+    ) -> dict:
         habit_ids = list({a.habit_id for a in payload.activities})
-        if not habit_ids:
-            return SyncActivityResponse(message="Nothing to sync", processed=0)
 
         habit_check = await db.execute(
             select(Habit.id).where(Habit.id.in_(habit_ids), Habit.user_id == user_id)
         )
         valid_habit_ids = {h for h in habit_check.scalars().all()}
 
-        # Parse all valid activities upfront
         parsed_activities = []
         for activity in payload.activities:
             if activity.habit_id not in valid_habit_ids:
@@ -479,9 +496,6 @@ class HabitService:
             except ValueError:
                 continue
             parsed_activities.append((activity, act_date))
-
-        if not parsed_activities:
-            return SyncActivityResponse(message="Nothing to sync", processed=0)
 
         # Batch-fetch all existing logs in a single query
         lookup_pairs = [(a.habit_id, d) for a, d in parsed_activities]
@@ -514,7 +528,7 @@ class HabitService:
 
         await db.flush()
 
-        user_uuid = UUID(str(user_id))
+        user_uuid = UUID(user_id)
         affected_dates = {act_date for _, act_date in parsed_activities}
         if affected_dates:
             active_dates_query = await db.execute(
@@ -550,7 +564,7 @@ class HabitService:
                 )
 
         await db.commit()
-        return SyncActivityResponse(message="Sync successful", processed=processed)
+        return {"message": HABIT_MESSAGES.SYNC_SUCCESSFUL, "processed": processed}
 
     async def check_in(
         self,
@@ -561,12 +575,19 @@ class HabitService:
         rdb: Redis,
         tz: str | None = None,
     ) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+        invalid_date = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.INVALID_DATE_FORMAT,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         habit_check = await db.execute(
             select(Habit.id).where(
@@ -576,17 +597,13 @@ class HabitService:
             )
         )
         if not habit_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+            raise not_found
 
         if payload.date:
             try:
                 act_date = date.fromisoformat(payload.date)
             except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-                )
+                raise invalid_date
         else:
             act_date = today_in(tz)
 
@@ -616,7 +633,7 @@ class HabitService:
         await rdb.set(cache_key, undo_token, ex=300)
 
         return {
-            "message": "Check-in successful",
+            "message": HABIT_MESSAGES.CHECK_IN_SUCCESSFUL,
             "date": act_date.isoformat(),
             "undo_token": undo_token,
             "undo_expires_in": 300,
@@ -632,12 +649,27 @@ class HabitService:
         rdb: Redis,
         tz: str | None = None,
     ) -> dict:
+        not_found = HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=HABIT_MESSAGES.NOT_FOUND,
+        )
+        invalid_date = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.INVALID_DATE_FORMAT,
+        )
+        undo_expired = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.UNDO_EXPIRED,
+        )
+        invalid_undo_token = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=HABIT_MESSAGES.INVALID_UNDO_TOKEN,
+        )
+
         try:
             habit_uuid = UUID(habit_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+        except (ValueError, TypeError):
+            raise not_found
 
         habit_check = await db.execute(
             select(Habit.id).where(
@@ -647,17 +679,13 @@ class HabitService:
             )
         )
         if not habit_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=HABIT_MESSAGES.NOT_FOUND
-            )
+            raise not_found
 
         if payload.date:
             try:
                 act_date = date.fromisoformat(payload.date)
             except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
-                )
+                raise invalid_date
         else:
             act_date = today_in(tz)
 
@@ -665,10 +693,7 @@ class HabitService:
         cached_token = await rdb.get(cache_key)
 
         if not cached_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=HABIT_MESSAGES.UNDO_EXPIRED,
-            )
+            raise undo_expired
 
         cached_token_str = (
             cached_token.decode("utf-8")
@@ -676,10 +701,7 @@ class HabitService:
             else str(cached_token)
         )
         if cached_token_str != undo_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=HABIT_MESSAGES.INVALID_UNDO_TOKEN,
-            )
+            raise invalid_undo_token
 
         existing = await db.execute(
             select(ActivityLog).where(
@@ -715,4 +737,7 @@ class HabitService:
 
         await rdb.delete(cache_key)
 
-        return {"message": "Undo check-in successful", "date": act_date.isoformat()}
+        return {
+            "message": HABIT_MESSAGES.UNDO_CHECK_IN_SUCCESSFUL,
+            "date": act_date.isoformat(),
+        }

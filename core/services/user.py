@@ -928,8 +928,6 @@ class UserService:
             redis_key, json.dumps(reset_data), ex=RESET_PASSWORD_OTP_EXPIRY_SECONDS
         )
 
-        # Log OTP to console for now
-        # TODO: Set up email OTP sending service (SMTP / SendGrid / Resend / AWS SES)
         logger.info(f"[RESET PASSWORD OTP] OTP for {normalized_email} is: {otp}")
 
         if ENVIRONMENT == "prod":
