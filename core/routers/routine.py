@@ -32,7 +32,12 @@ async def get_all(
     current_user: Mapping[str, Any] = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[RoutineResponse]:
-    return await routine_service.get_all(user_id=str(current_user["id"]), db=db)
+    return await routine_service.get_all(
+        user_id=str(current_user["id"]),
+        subscription_status=current_user["subscription_status"],
+        tz=current_user.get("timezone"),
+        db=db,
+    )
 
 
 @routines_router.get(
@@ -46,7 +51,11 @@ async def get_today_routines(
     db: AsyncSession = Depends(get_db),
 ) -> list[RoutineResponse]:
     return await routine_service.get_by_day(
-        user_id=str(current_user["id"]), day_digit=day, db=db
+        user_id=str(current_user["id"]),
+        day_digit=day,
+        subscription_status=current_user["subscription_status"],
+        tz=current_user.get("timezone"),
+        db=db,
     )
 
 
@@ -59,7 +68,11 @@ async def get_routine(
     db: AsyncSession = Depends(get_db),
 ) -> RoutineResponse:
     return await routine_service.get_routine(
-        user_id=str(current_user["id"]), routine_id=id, db=db
+        user_id=str(current_user["id"]),
+        routine_id=id,
+        subscription_status=current_user["subscription_status"],
+        tz=current_user.get("timezone"),
+        db=db,
     )
 
 
@@ -140,6 +153,8 @@ async def create_routine(
     return await routine_service.create_routine(
         user_id=str(current_user["id"]),
         payload=payload,
+        subscription_status=current_user["subscription_status"],
+        tz=current_user.get("timezone"),
         db=db,
     )
 
@@ -163,5 +178,7 @@ async def update_routine(
         id=id,
         user_id=str(current_user["id"]),
         payload=payload,
+        subscription_status=current_user["subscription_status"],
+        tz=current_user.get("timezone"),
         db=db,
     )

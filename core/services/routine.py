@@ -18,7 +18,12 @@ from core.schemas.routine import (
     RoutineResponse,
     SharedHabitInfo,
 )
-from core.utils import check_reminder_before_routine, fmt_days, is_time_in_period
+from core.utils import (
+    attach_activity,
+    check_reminder_before_routine,
+    fmt_days,
+    is_time_in_period,
+)
 
 
 class RoutineService:
@@ -280,6 +285,8 @@ class RoutineService:
         user_id: str,
         payload: CreateRoutineRequest,
         db: AsyncSession,
+        subscription_status: str = "pro",
+        tz: str | None = None,
     ) -> dict:
         """Create a new routine and link existing habits to it."""
         frequency: list[int] = sorted(set(payload.frequency))
@@ -311,12 +318,19 @@ class RoutineService:
             habits=habits,
         )
 
+        routine_resp = RoutineResponse.model_validate(routine)
+        attach_activity(list(routine_resp.habits), subscription_status, tz=tz)
         return {
             "message": ROUTINE_MESSAGES.CREATED,
-            "routine": RoutineResponse.model_validate(routine).model_dump(),
+            "routine": routine_resp.model_dump(),
         }
 
-    async def get_all(self, user_id: str, db: AsyncSession) -> list[RoutineResponse]:
+    async def get_all(
+        self,
+        user_id: str, db: AsyncSession, 
+        subscription_status: str = "pro", 
+        tz: str | None = None
+    ) -> list[RoutineResponse]:
         result = await db.execute(
             select(Routine)
             .options(
@@ -327,10 +341,13 @@ class RoutineService:
             .where(Routine.user_id == user_id, Routine.deleted_at.is_(None))
         )
         routines = result.scalars().all()
-        return [RoutineResponse.model_validate(r) for r in routines]
+        routine_resps = [RoutineResponse.model_validate(r) for r in routines]
+        for r in routine_resps:
+            attach_activity(list(r.habits), subscription_status, tz=tz)
+        return routine_resps
 
     async def get_by_day(
-        self, user_id: str, day_digit: int, db: AsyncSession
+        self, user_id: str, day_digit: int, db: AsyncSession, subscription_status: str = "pro", tz: str | None = None
     ) -> list[RoutineResponse]:
         invalid_day = HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -354,10 +371,13 @@ class RoutineService:
             )
         )
         routines = result.scalars().all()
-        return [RoutineResponse.model_validate(r) for r in routines]
+        routine_resps = [RoutineResponse.model_validate(r) for r in routines]
+        for r in routine_resps:
+            attach_activity(list(r.habits), subscription_status, tz=tz)
+        return routine_resps
 
     async def get_routine(
-        self, user_id: str, routine_id: str, db: AsyncSession
+        self, user_id: str, routine_id: str, db: AsyncSession, subscription_status: str = "pro", tz: str | None = None
     ) -> RoutineResponse:
         not_found = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -386,7 +406,9 @@ class RoutineService:
         if not routine:
             raise not_found
 
-        return RoutineResponse.model_validate(routine)
+        routine_resp = RoutineResponse.model_validate(routine)
+        attach_activity(list(routine_resp.habits), subscription_status, tz=tz)
+        return routine_resp
 
     async def update_routine(
         self,
@@ -394,6 +416,8 @@ class RoutineService:
         id: str,
         payload: CreateRoutineRequest,
         db: AsyncSession,
+        subscription_status: str = "pro",
+        tz: str | None = None,
     ) -> dict:
         """Update an existing routine and re-evaluate all guardrail checks."""
         not_found = HTTPException(
@@ -472,9 +496,11 @@ class RoutineService:
         )
         updated_routine = refreshed_result.scalar_one()
 
+        routine_resp = RoutineResponse.model_validate(updated_routine)
+        attach_activity(list(routine_resp.habits), subscription_status, tz=tz)
         return {
             "message": ROUTINE_MESSAGES.UPDATED,
-            "routine": RoutineResponse.model_validate(updated_routine).model_dump(),
+            "routine": routine_resp.model_dump(),
         }
 
     async def check_routine_deletion(
