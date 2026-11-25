@@ -327,9 +327,10 @@ class RoutineService:
 
     async def get_all(
         self,
-        user_id: str, db: AsyncSession, 
-        subscription_status: str = "pro", 
-        tz: str | None = None
+        user_id: str,
+        db: AsyncSession,
+        subscription_status: str = "pro",
+        tz: str | None = None,
     ) -> list[RoutineResponse]:
         result = await db.execute(
             select(Routine)
@@ -347,7 +348,12 @@ class RoutineService:
         return routine_resps
 
     async def get_by_day(
-        self, user_id: str, day_digit: int, db: AsyncSession, subscription_status: str = "pro", tz: str | None = None
+        self,
+        user_id: str,
+        day_digit: int,
+        db: AsyncSession,
+        subscription_status: str = "pro",
+        tz: str | None = None,
     ) -> list[RoutineResponse]:
         invalid_day = HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -377,7 +383,12 @@ class RoutineService:
         return routine_resps
 
     async def get_routine(
-        self, user_id: str, routine_id: str, db: AsyncSession, subscription_status: str = "pro", tz: str | None = None
+        self,
+        user_id: str,
+        routine_id: str,
+        db: AsyncSession,
+        subscription_status: str = "pro",
+        tz: str | None = None,
     ) -> RoutineResponse:
         not_found = HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -767,9 +778,7 @@ class RoutineService:
             ).scalar_one()
             return {
                 "message": ROUTINE_MESSAGES.UNDO_SUCCESS,
-                "restored_routine": RoutineResponse.model_validate(
-                    refreshed
-                ).model_dump(),
+                "restored_routine": RoutineResponse.model_validate(refreshed).model_dump(),
             }
         else:
             raise not_found
