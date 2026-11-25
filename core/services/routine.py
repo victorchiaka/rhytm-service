@@ -778,7 +778,9 @@ class RoutineService:
             ).scalar_one()
             return {
                 "message": ROUTINE_MESSAGES.UNDO_SUCCESS,
-                "restored_routine": RoutineResponse.model_validate(refreshed).model_dump(),
+                "restored_routine": RoutineResponse.model_validate(
+                    refreshed
+                ).model_dump(),
             }
         else:
             raise not_found
