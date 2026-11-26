@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.database import get_db
 
-SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(16))
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable is not set")
+
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 bearer_scheme = HTTPBearer(auto_error=False)
